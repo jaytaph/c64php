@@ -1,0 +1,148 @@
+<html>
+
+<head>
+    <title>C64</title>
+</head>
+
+<body>
+
+    <center>
+        <img align=center src="logo.png" width="320">
+        <br>
+        <br>
+        <br>
+        <canvas id="monitor" tabindex="1" height="400" width="640"></canvas>
+    </center>
+
+
+    <script type="text/javascript">
+        // Websocket
+        var socket;
+
+        // C64 colors
+        var colors = [
+            [0x00, 0x00, 0x00],
+            [0xFF, 0xFF, 0xFF],
+            [0x68, 0x37, 0x2B],
+            [0x70, 0xA4, 0xB2],
+            [0x6F, 0x3D, 0x86],
+            [0x58, 0x8D, 0x43],
+            [0x35, 0x28, 0x79],
+            [0xB8, 0xC7, 0x6F],
+            [0x6F, 0x4F, 0x25],
+            [0x43, 0x39, 0x00],
+            [0x9A, 0x67, 0x59],
+            [0x44, 0x44, 0x44],
+            [0x6C, 0x6C, 0x6C],
+            [0x9A, 0xD2, 0x84],
+            [0x6C, 0x5E, 0xB5],
+            [0x95, 0x95, 0x95]
+        ];
+
+        function onKeyDown(e) {
+            console.log("key down" + e.keyCode);
+            socket.send("KD: " + e.keyCode);
+            return false;
+        }
+        function onKeyUp(e) {
+            console.log("key up" + e.keyCode);
+            socket.send("KU: " + e.keyCode);
+            return false;
+        }
+
+
+        function initCanvas() {
+            var c = document.getElementById("monitor");
+
+            c.style.outline = "none";
+            c.tabIndex = 1000;
+
+            c.addEventListener("keydown", onKeyDown, false);
+            c.addEventListener("keyup", onKeyUp, false);
+
+            var ctx = c.getContext("2d");
+            ctx.beginPath();
+            ctx.rect(0, 0, 640, 400);
+            ctx.fillStyle = "gray";
+            ctx.fill();
+
+            ctx.fillStyle = "white";
+            ctx.font="20px Georgia";
+            ctx.textAlign="center";
+            ctx.fillText("Connecting...", 320, 200);
+        }
+
+        function _put_pixel(buffer, position, c) {
+            buffer.data[position + 0] = c[0];
+            buffer.data[position + 1] = c[1];
+            buffer.data[position + 2] = c[2];
+            buffer.data[position + 3] = 0xFF;
+        }
+
+        function put_pixel(buffer, x, y, c) {
+            var position = (y*2* 640) + (x*2);
+            position *= 4;
+
+            _put_pixel(buffer, position, c);
+            _put_pixel(buffer, position + 4, c);
+            _put_pixel(buffer, position + (640 * 4), c);
+            _put_pixel(buffer, position + (641 * 4), c);
+        }
+
+        function waitForSocket(url){
+            socket = new WebSocket(url);
+
+            var c = document.getElementById("monitor");
+            var ctx = c.getContext("2d");
+            var buffer = ctx.createImageData(320 * 2, 200 * 2);
+
+            socket.onmessage = function(e) {
+                console.log('message received');
+                var y = 0;
+                var x = 0;
+
+                console.log("putpixels()");
+
+                var str = e.data;
+                var i = str.length;
+                while (i--) {
+                    var c = str[i].charCodeAt(0);
+                    put_pixel(buffer, x, y, colors[c]);
+
+                    x++;
+                    if (x == 320) { y++; x=0; }
+                }
+
+                console.log("putImageData()");
+                ctx.putImageData(buffer, 0, 0);
+            };
+            socket.onclose = function(){
+                console.log("Socket closed");
+
+                // retry in 5 seconds
+                setTimeout(function() {
+                    waitForSocket(url)
+                }, 2000);
+
+                initCanvas();
+            };
+
+            socket.onopen = function() {
+                console.log("Socket opened");
+
+                var c = document.getElementById("monitor");
+                var ctx = c.getContext("2d");
+                ctx.beginPath();
+                ctx.rect(0, 0, 640, 400);
+                ctx.fillStyle = "rgb(" + colors[14].join(",") + ")";
+                ctx.fill();
+            };
+
+        }
+
+        initCanvas();
+        waitForSocket("ws://192.168.56.201:6464");
+    </script>
+</body>
+
+</html>

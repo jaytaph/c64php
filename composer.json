@@ -1,0 +1,22 @@
+{
+    "name": "jaytaph/c64php",
+    "description": "Commodore64 emulator in PHP",
+    "type": "project",
+    "license": "BSD-3",
+    "authors": [
+        {
+            "name": "Joshua Thijssen",
+            "email": "jthijssen@noxlogic.nl"
+        }
+    ],
+    "require": {
+        "wapmorgan/ncursesobjects": "dev-master",
+        "cboden/ratchet": "^0.3.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "Mos6510\\": "src/Mos6510",
+            "Ncurses\\": "src/Ncurses"
+        }
+    }
+}
