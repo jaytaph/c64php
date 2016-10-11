@@ -154,6 +154,24 @@ class Memory {
     }
 
     /**
+     * Load program file. First two bytes of program file decides where to store the program in RAM
+     *
+     * @param $prg_file
+     * @throws \Exception
+     */
+    public function loadPrg($prg_file) {
+        $prg = file_get_contents($prg_file);
+        if (! $prg) {
+            throw new \Exception("Cannot load PRG file: ".$prg_file);
+        }
+
+        $offset = ord($prg[1]) * 256 + ord($prg[0]);
+        for ($i=2; $i < strlen($prg); $i++) {
+            $this->ram[$offset + $i - 2] = ord($prg[$i]);
+        }
+    }
+
+    /**
         * Load RAM file
         *
         * @param $rom_file
