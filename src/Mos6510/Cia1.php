@@ -82,7 +82,7 @@ class Cia1
         $this->rtc_start = microtime(true);
     }
 
-    public function read8($location) {
+    public function readIo($location) {
         $value = 0;
 
         // Locations are repeated every 16 bytes
@@ -209,8 +209,7 @@ class Cia1
     }
 
 
-
-    public function write8($location, $value) {
+    public function writeIo($location, $value) {
         // Locations are repeated every 16 bytes
         switch (($location - $this->memory_offset) & 0x0F) {
             case 0x00:

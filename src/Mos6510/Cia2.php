@@ -14,7 +14,7 @@ class Cia2 extends Cia1
 
     protected $memory_offset;
 
-    public function read8($location) {
+    public function readIo($location) {
         $value = 0;
 
         // Locations are repeated every 16 bytes
@@ -30,7 +30,7 @@ class Cia2 extends Cia1
                 break;
             default:
                 // Other locations are just like CIA1
-                $value = parent::read8($location);
+                $value = parent::readIo($location);
                 break;
         }
 
@@ -41,7 +41,7 @@ class Cia2 extends Cia1
         return ($this->data_port_a & 0x02);
     }
 
-    public function write8($location, $value) {
+    public function writeIo($location, $value) {
         // Locations are repeated every 16 bytes
         switch (($location - $this->memory_offset) & 0x0F) {
             case 0:
@@ -53,7 +53,7 @@ class Cia2 extends Cia1
                 break;
             default:
                 // Other locations are just like CIA1
-                parent::write8($location, $value);
+                parent::writeIo($location, $value);
                 break;
         }
     }

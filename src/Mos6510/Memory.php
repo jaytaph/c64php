@@ -244,15 +244,15 @@ class Memory {
         if ($this->bank[$zone] == self::BANKMODE_IO) {
             if ($location >= 0xD000 && $location <= 0xD3FF) {
                 // read from vic IO
-                return $this->c64->getVic2()->read8($location);
+                return $this->c64->getVic2()->readIo($location);
             }
             if ($location >= 0xDC00 && $location <= 0xDCFF) {
                 // Read from CIA 1
-                return $this->c64->getCia1()->read8($location);
+                return $this->c64->getCia1()->readIo($location);
             }
             if ($location >= 0xDD00 && $location <= 0xDDFF) {
                 // Read from CIA 2
-                return $this->c64->getCia2()->read8($location);
+                return $this->c64->getCia2()->readIo($location);
             }
         }
 
@@ -310,15 +310,15 @@ class Memory {
         if ($this->bank[$zone] == self::BANKMODE_IO) {
             if ($location >= 0xD000 && $location <= 0xD3FF) {
                 // Write to vic IO
-                return $this->c64->getVic2()->write8($location, $value);
+                return $this->c64->getVic2()->writeIo($location, $value);
             }
             if ($location >= 0xDC00 && $location <= 0xDCFF) {
                 // Write to CIA 1
-                return $this->c64->getCia1()->write8($location, $value);
+                return $this->c64->getCia1()->writeIo($location, $value);
             }
             if ($location >= 0xDD00 && $location <= 0xDDFF) {
                 // Write to CIA 2
-                return $this->c64->getCia2()->write8($location, $value);
+                return $this->c64->getCia2()->writeIo($location, $value);
             }
         }
 
