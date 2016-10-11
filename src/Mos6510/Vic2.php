@@ -13,6 +13,7 @@ class Vic2
 {
 
     const COLOR_RAM_ADDRESS = 0xD800;
+    const SPRITE_VECTOR_OFFSET = 0x3F8;
 
     /** @var Cpu */
     protected $cpu;
@@ -61,10 +62,9 @@ class Vic2
     protected $sprite_collision_background = 0;                     // Sprites collides with background
     protected $sprite_extra_color = array(0, 0);                    // Two extra colors for multicolor sprites
     protected $sprite_colors = array(0, 0, 0, 0, 0, 0, 0, 0);       // Main colors of sprites
-    protected $sprite_extra_background_color = array(0, 0, 0);      // Three extra background colors for sprites
+    protected $background_color = array(0, 0, 0, 0);                // Background colors
 
     protected $border_color = 0;            // Default border color
-    protected $background_color = 0;        // Default background color
 
     protected $graphics_mode = 0;       // Actual screen mode (0-7)
     protected $screen_enabled = 0;      // Screen is enabled
@@ -74,6 +74,9 @@ class Vic2
 
     // Framebuffer that holds the actual plotted screen colors
     protected $buffer;
+
+    // Time in microseconds when a raster is started (used for timing / debug purposes)
+    protected $raster_start = 0;
 
 
     /**
@@ -95,7 +98,13 @@ class Vic2
         $this->logger = $logger;
     }
 
-    public function read8($location) {
+    /**
+     * Read VIC I/O
+     *
+     * @param $location
+     * @return int
+     */
+    public function readIo($location) {
         $value = 0;
 
         $address = $location - $this->memory_offset;
@@ -110,7 +119,7 @@ class Vic2
             case 0x0A :
             case 0x0C :
             case 0x0E :
-                $sprite_offset = ($address) / 2;
+                $sprite_offset = $address / 2;
                 $value = $this->sprite_x[(int)$sprite_offset] & 0xFF;
                 break;
             case 0x01 :
@@ -180,19 +189,17 @@ class Vic2
                 $value = $this->sprite_collision_background;
                 break;
             case 0x20:
-                $value = ($this->border_color & 0x07);
+                $value = $this->border_color;
                 break;
             case 0x21:
-                $value = ($this->background_color & 0x07);
-                break;
             case 0x22:
             case 0x23:
             case 0x24:
-                $value = ($this->sprite_extra_background_color[$address - 0x22] & 0x07);
+                $value = $this->background_color[$address - 0x21];
                 break;
             case 0x25:
             case 0x26:
-                $value = ($this->sprite_extra_color[$address - 0x25] & 0x07);
+                $value = $this->sprite_extra_color[$address - 0x25];
                 break;
             case 0x27:
             case 0x28:
@@ -203,7 +210,7 @@ class Vic2
             case 0x2D:
             case 0x2E:
                 $sprite_offset = $address - 0x27;
-                $value = ($this->sprite_colors[$sprite_offset] & 0x07);
+                $value = $this->sprite_colors[$sprite_offset];
                 break;
             default:
                 // Unused
@@ -213,18 +220,56 @@ class Vic2
         return $value;
     }
 
-    protected $raster_start = 0;
-
-    public function write8($location, $value) {
+    /**
+     * Write VIC I/O
+     *
+     * @param $location
+     * @param $value
+     */
+    public function writeIo($location, $value) {
         $address = $location - $this->memory_offset;
         $address %= 0x40; // Make sure we always use 0xD000-0xD03F. Vic2 repeats every 0x40 bytes
-        
+
         $this->logger->debug(sprintf("VIC2: Writing %02X to %04X\n", $value, $location));
 
         switch ($address) {
+            case 0x00 :
+            case 0x02 :
+            case 0x04 :
+            case 0x06 :
+            case 0x08 :
+            case 0x0A :
+            case 0x0C :
+            case 0x0E :
+                $sprite_offset = (int)($address / 2);
+
+                // Make sure we mask off bit 9. It must not change.
+                $v = $this->sprite_x[$sprite_offset];
+                $v &= 0x100;
+                $v |= ($value & 0xFF);
+                $this->sprite_x[$sprite_offset] = $v;
+                break;
+            case 0x01 :
+            case 0x03 :
+            case 0x05 :
+            case 0x07 :
+            case 0x09 :
+            case 0x0B :
+            case 0x0D :
+            case 0x0F :
+                $sprite_offset = ($address - 1) / 2;
+                $this->sprite_y[(int)$sprite_offset] = ($value & 0xFF);
+                break;
+            case 0x10 :
+                // Set bit I to 8th bit of sprite X offset
+                for ($i=0; $i!=8; $i++) {
+                    $bit = Utils::bit_get($value, $i);
+                    $this->sprite_x[$i] = Utils::bit_set($this->sprite_x[$i], 8, $bit);
+                }
+                break;
             case 0x11 :
                 $this->cr1 = $value;
-                $this->update_video_settings();
+                $this->updateVideoSettings();
                 break;
             case 0x12:
                 $this->raster_line_interrupt = $value;
@@ -238,7 +283,7 @@ class Vic2
                 break;
             case 0x16 :
                 $this->cr2 = $value;
-                $this->update_video_settings();
+                $this->updateVideoSettings();
                 break;
             case 0x17:
                 $this->sprite_double_height = $value;
@@ -269,19 +314,17 @@ class Vic2
                 // @TODO: Are these to write?
                 break;
             case 0x20:
-                $this->border_color = $value;
+                $this->border_color = ($value & 0x0F);
                 break;
             case 0x21:
-                $this->background_color = $value;
-                break;
             case 0x22:
             case 0x23:
             case 0x24:
-                $this->sprite_extra_background_color[$address - 0x22] = ($value & 0x04);
+                $this->background_color[$address - 0x21] = ($value & 0x0F);
                 break;
             case 0x25:
             case 0x26:
-                $this->sprite_extra_color[$address - 0x25] = ($value & 0x04);
+                $this->sprite_extra_color[$address - 0x25] = ($value & 0x0F);
                 break;
             case 0x27:
             case 0x28:
@@ -291,7 +334,7 @@ class Vic2
             case 0x2C:
             case 0x2D:
             case 0x2E:
-                $this->sprite_colors[0x27 - $address] = ($value & 0x04);
+                $this->sprite_colors[0x27 - $address] = ($value & 0x0F);
                 break;
             default:
                 // Other address are unused
@@ -299,8 +342,9 @@ class Vic2
         }
     }
 
-
-
+    /**
+     * Single VIC cycle
+     */
     public function cycle() {
         // Are there still unacknowledged interrupts pending?
         if (Utils::bit_test($this->interrupt_status, 7)) {
@@ -311,8 +355,9 @@ class Vic2
             return;
         }
 
-        // Do 8 times
+        // Iterate 8 times (so we get 8 VIC cycles on each cycle)
         for ($i=0; $i!=8; $i++) {
+
             // X / Y coordinates are starting from the top left HBLANK (504x312)
             $x = $this->raster_beam % 504;
             $y = ($this->raster_beam - $x) / 504;
@@ -335,6 +380,9 @@ class Vic2
                     // Find the exact pixel color for the given position (based on screenmode, sprites, textdata etc)
                     $p = $this->findPixelToRender($x, $y);
 
+                    // Check sprites
+                    $p = $this->handleSprites($x+43, $y+43, $p);
+
                     // Write to monitor. Make sure we take border offset into account
                     $this->buffer[(43+$y) * 403 + (43+$x)] = chr($p);
 
@@ -347,6 +395,7 @@ class Vic2
                 // HBLANK or VBLANK
             }
 
+            // Move raster beam
             $this->raster_beam++;
 
             // Check raster line interrupt and trigger if needed
@@ -357,14 +406,15 @@ class Vic2
                 $this->cpu->triggerIrq();
                 return;
             }
-            
 
+
+            // Reset raster beam when we reached end of screen
             if ($this->raster_beam >= (504 * 312)) {
                 $this->io->writeMonitorBuffer($this->buffer);
 
                 // Go back to left top corner
                 $this->raster_beam = 0;
-    
+
                 // Should this also be reset here?
                 $this->raster_line = 0;
 
@@ -377,12 +427,11 @@ class Vic2
     }
 
     /**
-     * Changes the mode depending on the cr1 and cr2 registers
+     * Changes the graphics mode depending on the cr1 and cr2 registers
      */
-    protected function update_video_settings() {
+    protected function updateVideoSettings() {
         // Screen enabled or not
         $this->screen_enabled = Utils::bit_test($this->cr1, 4);
-        $this->screen_enabled = true;
 
         // Set graphics mode between 0-7
         $bmm = Utils::bit_get($this->cr1, 5); // bitmap mode
@@ -393,30 +442,38 @@ class Vic2
         $this->logger->debug(sprintf("Setting VIC2 graphics mode to %02X\n", $this->graphics_mode));
     }
 
+    /**
+     * Returns the actual color of the given X Y coordinate from the screen (excluding border, only 320x200)
+     *
+     * @param $x
+     * @param $y
+     * @return int
+     */
     protected function findPixelToRender($x, $y)
     {
         // We assume standard character mode
         switch ($this->graphics_mode) {
             case 0 :
                 // Standard character mode
-                $c = $this->charMode($x, $y, false, false);
+                $c = $this->standardCharacterMode($x, $y);
                 break;
             case 1:
                 // Multicolor character mode
-                $c = $this->charMode($x, $y, true, false);
+                $c = $this->multiColorCharacterMode($x, $y);
                 break;
             case 2:
                 // Standard bitmap mode
                 $c = 0;
+                // @TODO: Not implemented yet
                 break;
             case 3:
                 // Multicolor bitmap mode
                 $c = 0;
+                // @TODO: Not implemented yet
                 break;
             case 4:
                 // Extended background color character mode
-                $c = $this->charMode($x, $y, false, true);
-                $c = 0;
+                $c = $this->extendedCharacterMode($x, $y);
                 break;
             case 5:
                 // Extended background color multicolor character mode
@@ -438,9 +495,15 @@ class Vic2
                 $c = 0;
 
         }
+
         return ($c & 0x0F);
     }
 
+    /**
+     * Returns offset of the currently configured screen memory
+     *
+     * @return int
+     */
     protected function getScreenMemoryOffset() {
         $bank_offset = $this->cia2->getVicBank() * 0x4000;
 
@@ -452,6 +515,11 @@ class Vic2
         return $screenmem_offset;
     }
 
+    /**
+     * Returns offset of the currently configured bitmap memory
+     *
+     * @return int
+     */
     protected function getBitmapMemoryOffset() {
         $bank_offset = $this->cia2->getVicBank() * 0x4000;
 
@@ -462,6 +530,10 @@ class Vic2
         return $bitmapmem_offset;
     }
 
+    /**
+     * Returns offset of the currently configured character memory
+     * @return int
+     */
     protected function getCharMemoryOffset() {
         $bank_offset = $this->cia2->getVicBank() * 0x4000;
 
@@ -473,8 +545,21 @@ class Vic2
     }
 
     /**
-     * @param $petscii_code
-     * @param $line
+     * Reads a color from color ram at specified index
+     *
+     * @param $index
+     * @return int
+     */
+    protected function readFromColorRam($index) {
+        return $this->memory->read8ram(self::COLOR_RAM_ADDRESS + $index) & 0x0F;
+    }
+
+    /**
+     * Reads a single bitmap line (8 bits) from a given petscii code. By reading
+     * 8 lines (0-7), you retrieve a complete 8x8 bitmap of a single character.
+     *
+     * @param int $petscii_code
+     * @param int $line Line number to read (between 0 and 7)
      * @return int
      */
     protected function readCharBitmapLine($petscii_code, $line) {
@@ -504,8 +589,110 @@ class Vic2
         return $bitmap_line;
     }
 
+    /**
+     * Handle sprites and returns a specific color that is needed on the given position. Also deals
+     * with things like collisions etc.
+     *
+     * @param $x
+     * @param $y
+     * @param $default_color int The current color when nothing is needed to be plotted (or when the color is transparant)
+     * @return array|mixed
+     */
+    protected function handleSprites($x, $y, $default_color)
+    {
+        // Assume default / transparant color
+        $color = $default_color;
 
-    function charMode($x, $y, $multi_color, $extended_mode = false) {
+        // We start painting sprite 7 first, up to sprite 0, which has the highest priority
+        for ($i = 7; $i >= 0; $i--) {
+            // Only handle sprite when it's enabled
+            if (Utils::bit_test($this->sprite_enable, $i)) {
+                $color = $this->handleSprite($i, $x, $y, $color);
+            }
+        }
+
+        return $color;
+    }
+
+    /**
+     * Handle a single sprite
+     *
+     * @param $i
+     * @param $x
+     * @param $y
+     * @param $color
+     */
+    protected function handleSprite($i, $x, $y, $color) {
+        // Fetch location of the sprite
+        $location = $this->getScreenMemoryOffset() + self::SPRITE_VECTOR_OFFSET + $i;
+        $location = $this->memory->read8($location);
+
+        $x_coord = $this->sprite_x[$i];
+        $y_coord = $this->sprite_y[$i];
+
+        // @TODO: Double width / height
+        $size_x = 24;
+        $size_y = 21;
+
+        if ($x >= $x_coord && $x < ($x_coord + $size_x) &&
+            $y >= $y_coord && $y < ($y_coord + $size_y)) {
+            // X Y falls into the coords of the current sprite
+
+            $x_off = ($x - $x_coord);
+            $y_off = ($y - $y_coord);
+
+            $offset = ($y_off * 24) + $x_off;
+
+            $byte_offset = ($offset >> 3);
+            $bit_offset = 7 - ($offset % 8);
+
+            $value = $this->memory->read8($location + $byte_offset);
+
+            if (Utils::bit_test($this->sprite_multicolor, $i)) {
+                // Multicolor sprite
+                $bit_offset >>= 1;
+                $bit_offset *= 2;
+                switch (($value >> $bit_offset) & 0x03) {
+                    case 0:
+                        // Color is the current default color
+                        break;
+                    case 1:
+                        $color = $this->sprite_extra_color[0];
+                        break;
+                    case 2:
+                        // Note that 2 (bit pair 10) will use sprite colors. This is
+                        // different than other modes that use multicolor.
+                        $color = $this->sprite_colors[$i];
+                        break;
+                    case 3:
+                        $color = $this->sprite_extra_color[1];
+                        break;
+                }
+            } else {
+                if (Utils::bit_get($value, $bit_offset)) {
+                    $color = $this->sprite_colors[$i];
+                }
+            }
+
+            if ($i == 1) {
+                printf("S: %02d C: %02X L: %04X  V: %02X   X: %04d  Y: %04d OFF: %04d  BYO: %04d  BIO: %04d\n",
+                        $i, $color, $location, $value, $x, $y, $offset, $byte_offset, $bit_offset);
+            }
+        }
+
+        return $color;
+    }
+
+    /**
+     * Plots pixel in standard character mode
+     *
+     * @param $x
+     * @param $y
+     * @return int
+     */
+    protected function standardCharacterMode($x, $y) {
+        $color = 0;
+
         // Find the actual char for pixel $x, $y
         $char_index = floor($y / 8) * 40 + floor($x / 8);
 
@@ -515,53 +702,96 @@ class Vic2
         // Find the start of the matching bitmap inside the character ROM
         $char_bitmap_line = $this->readCharBitmapLine($char, ($y % 8));
 
+        $pixel = Utils::bit_get($char_bitmap_line, 7 - ($x % 8));
 
-        // Assume the worst
+        switch ($pixel) {
+            case 0:
+                // Pixel turned off. Use background color
+                $color = $this->background_color[0];
+                break;
+            case 1:
+                // Read from color RAM
+                $color = $this->readFromColorRam($char_index);
+                break;
+        }
+
+        return ($color & 0x0F);
+    }
+
+    /**
+     * Plots pixel in multicolor character mode
+     * @param $x
+     * @param $y
+     * @return int
+     */
+    protected function multiColorCharacterMode($x, $y) {
+        // Find the actual char for pixel $x, $y
+        $char_index = floor($y / 8) * 40 + floor($x / 8);
+
+        // If bit 3 of the color of the given character to plot is 0, plot it as
+        // a standard character. This way we can actually "mix" multicolor and
+        // standard characters, based on their color values.
+        $color = $this->readFromColorRam($char_index);
+        if (Utils::bit_test($color, 3) == 0) {
+            return $this->standardCharacterMode($x, $y);
+        }
+
+        // Read the given character from the screen memory
+        $char = $this->memory->read8($this->getScreenMemoryOffset() + $char_index);
+
+        // Find the start of the matching bitmap inside the character ROM
+        $char_bitmap_line = $this->readCharBitmapLine($char, ($y % 8));
+
+        // Fetch two pixels from the bitmap (as 33221100 instead of the regular 76543210)
+        $o = $x % 8;
+        $o = (7 - $o);
+        $o >>= 1;
+        $pixel = ($char_bitmap_line >> ($o * 2)) & 0x03;
+
+        switch ($pixel) {
+            case 0:
+            case 1:
+            case 2:
+                $color = $this->background_color[$pixel];
+                break;
+            case 3:
+                // Color is actually lowest 2 bytes of color ram
+                $color = ($color & 0x07);
+                break;
+        }
+
+        return ($color & 0x0F);
+    }
+
+    /**
+     * Plots pixel in extended character mode
+     *
+     * @param $x
+     * @param $y
+     * @return int
+     */
+    protected function extendedCharacterMode($x, $y) {
         $color = 0;
 
-        if ($multi_color) {
-            // Fetch two pixels from the bitmap (as 33221100 instead of the regular 76543210)
+        // Find the actual char for pixel $x, $y
+        $char_index = floor($y / 8) * 40 + floor($x / 8);
 
-            $x %= 8;
-            $x = (7 - $x);
-            $x >>= 1;
-            $pixel = ($char_bitmap_line >> ($x*2)) & 0x03;
+        // Read the given character from the screen memory
+        $char = $this->memory->read8($this->getScreenMemoryOffset() + $char_index);
 
-            switch ($pixel) {
-                case 0:
-                    $color = $this->background_color;
-                    break;
-                case 1:
-                    $color = $this->sprite_extra_background_color[0];
-                    break;
-                case 2:
-                    $color = $this->sprite_extra_background_color[1];
-                    break;
-                case 3:
-                    // Read from color RAM
-                    $color = $this->memory->read8ram(self::COLOR_RAM_ADDRESS + $char_index);
-                    break;
-            }
+        // Find the start of the matching bitmap inside the character ROM. Only the first 64 chars are available!
+        $char_bitmap_line = $this->readCharBitmapLine(($char & 0x3F), ($y % 8));
 
-        } else {
-            // Find color in colormap, or use background color
-            $pixel = Utils::bit_get($char_bitmap_line, 7 - ($x % 8));
-            switch ($pixel) {
-                case 0:
-                    // Pixel turned off. Use background color
-                    $color = $this->background_color;
-                    break;
-                case 1:
-                    if ($extended_mode) {
-                        // In extended mode, the color is decided by the last 2 pixels of the
-                        // actual character (meaning we can only use the first 64 chars)
-                        $color = ($char >> 6) & 0x03;
-                    } else {
-                        // Read from color RAM
-                        $color = $this->memory->read8ram(self::COLOR_RAM_ADDRESS + $char_index);
-                    }
-                    break;
-            }
+        $pixel = Utils::bit_get($char_bitmap_line, 7 - ($x % 8));
+        switch ($pixel) {
+            case 0:
+                // Color depends on bit 6-7 from the actual character (hence only 64 are available)
+                $color = $this->background_color[($char >> 6) & 0x03];
+                break;
+            case 1:
+                // Read from color RAM
+                $color = $this->readFromColorRam($char_index);
+                break;
         }
 
         return ($color & 0x0F);
