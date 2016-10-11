@@ -31,7 +31,16 @@ class Cpu
     protected $ticks = 0;
 
     /** @var bool IRQ triggered */
-    protected $irq = false;
+    protected $irq_triggered = false;
+
+    // @var int The IRQ status. We enter, leave or
+    public $irq_status = 3;
+
+    const IRQ_ENTERING  = 3;        // We are entering an IRQ on the next cycle
+    const IRQ_INSIDE    = 2;        // We are inside an IRQ
+    const IRQ_LEAVING   = 1;        // We are leaving an IRQ on the next cycle (current is RTI)
+    const IRQ_OUTSIDE   = 0;        // We are not inside an IRQ
+
 
     // Program flags
     const P_FLAG_CARRY          = 0;      // Unsigned overflow
@@ -95,22 +104,52 @@ class Cpu
      */
     public function cycle()
     {
-        if ($this->irq) {
-            $this->irq = false;
+        if ($this->irq_triggered) {
+            $this->irq_triggered = false;
 
-            $this->interrupt(Cpu::IRQ_BRK_VECTOR);
+            $this->setIrqStatus(self::IRQ_ENTERING);
+            $this->handleInterrupt(self::IRQ_BRK_VECTOR);
             return;
         }
 
-        // Process instruction
+        // Store current opcode for later use
+        $opcode = $this->memory->read8($this->pc);
+
+        // If we are leaving the IRQ, set the correct IRQ status
+        if ($this->getIrqStatus() == self::IRQ_LEAVING) {
+            $this->setIrqStatus(self::IRQ_OUTSIDE);
+        }
+
+        // Process actual instruction
         $this->opcoder->process();
+
+        // Check if the processed opcode was actually an RTI. If so, set IRQ status
+        if ($opcode == Opcoder::OPCODE_RTI) {
+            $this->setIrqStatus(self::IRQ_LEAVING);
+        }
     }
 
     /**
-     * Trigger an IRQ
+     * Call this from anywhere to trigger an IRQ on the CPU
      */
     public function triggerIrq() {
-        $this->irq = true;
+        $this->irq_triggered = true;
+    }
+
+    /**
+     * Sets the current IRQ status
+     *
+     * @param $status
+     */
+    public function setIrqStatus($status) {
+        $this->irq_status = $status;
+    }
+
+    /**
+     * @return int
+     */
+    public function getIrqStatus() {
+        return $this->irq_status;
     }
 
 
@@ -119,7 +158,7 @@ class Cpu
      *
      * @param $vector
      */
-    protected function interrupt($vector) {
+    protected function handleInterrupt($vector) {
         $this->stackPush16($this->readPc());
 
         $this->flagSet(Cpu::P_FLAG_BREAK, 0);  // Break flag should be cleared
