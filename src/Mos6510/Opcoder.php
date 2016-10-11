@@ -120,6 +120,8 @@ class Opcoder {
 
     const OPCODE_NOP        = 0xC2;
     const OPCODE_NOP2       = 0xEA;
+    const OPCODE_NOP3       = 0x82;
+    const OPCODE_NOP4       = 0xDA;
 
     const OPCODE_ORA_IMM    = 0x09;
     const OPCODE_ORA_ZP     = 0x05;
@@ -714,6 +716,8 @@ class Opcoder {
 
             case self::OPCODE_NOP:
             case self::OPCODE_NOP2:
+            case self::OPCODE_NOP3:
+            case self::OPCODE_NOP4:
                 $this->cpu->tick(2);
                 break;
 
