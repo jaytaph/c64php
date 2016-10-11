@@ -64,7 +64,7 @@ class Cpu
      */
     public function boot()
     {
-        $this->opcoder = new Opcoder($this->c64->getCpu());
+        $this->opcoder = new IllegalOpcoder($this->c64->getCpu());
         $this->memory = $this->c64->getMemory();
         $this->cia1 = $this->c64->getCia1();
         $this->cia2 = $this->c64->getCia2();
