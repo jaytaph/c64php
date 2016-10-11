@@ -3,13 +3,14 @@ C64 Emulator written in PHP
 
     For the love of everything that is holy, why, oh god, why!!!!???!!
 
-
-![Screenshot](c64-screenshot-01.png)
+![Screenshot 1](c64-screenshot-01.png)
+![Screenshot 2](c64-screenshot-02.png)
 
 # TODO:
- - Debugger
- - Load C64 disks and tapes (hurrah)
- - SID
+ - Complete the debugger
+ - Load C64 disks and tapes (we can do PRG though)
+ - Enable SID
+ - Fix up VIC sprites
    
    
 # Bugs & Things
@@ -28,10 +29,10 @@ This means that the following must take place:
  
  
 # Files
-  - c64.php
+  - c64.php <file.prg>
   Actual c64 emulator (with shm monitor output)
    
-  - c64-debug.php
+  - c64-debug.php <file.prg>
   Actual c64 emulator with debug information visible
   
   - c64-ws.php
