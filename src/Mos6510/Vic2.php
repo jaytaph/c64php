@@ -12,11 +12,7 @@ use Mos6510\Logging\LoggerInterface;
 class Vic2
 {
 
-    // Address for character rom, as seen by the VIC
-    const ADDR_CHAR_ROM = 0x1000;
-
-    // Graphic modes
-    const MODE_STANDARDCHAR = 0;
+    const COLOR_RAM_ADDRESS = 0xD800;
 
     /** @var Cpu */
     protected $cpu;
@@ -315,13 +311,8 @@ class Vic2
             return;
         }
 
-        // Don't do anything when the screen is turned off
-        if (! $this->screen_enabled) {
-            return;
-        }
-
         // Do 8 times
-        for ($i=0; $i!=64; $i++) {
+        for ($i=0; $i!=8; $i++) {
             // X / Y coordinates are starting from the top left HBLANK (504x312)
             $x = $this->raster_beam % 504;
             $y = ($this->raster_beam - $x) / 504;
@@ -333,7 +324,7 @@ class Vic2
                 $x -= 52;
                 $y -= 15;
 
-                if ($x > 42 && $x <= 362 && $y > 42 && $y <= 242) {
+                if (($x > 42 && $x <= 362 && $y > 42 && $y <= 242) && $this->screen_enabled) {
                     // X / Y coordinates are now starting from the top left screen (320x200)
                     $x -= 43;
                     $y -= 43;
@@ -377,7 +368,7 @@ class Vic2
                 // Should this also be reset here?
                 $this->raster_line = 0;
 
-                $diff = microtime(true) - $this->raster_start;
+//                $diff = microtime(true) - $this->raster_start;
 //                print "Raster done within $diff \n";
                 $this->raster_start = microtime(true);
             }
@@ -391,59 +382,187 @@ class Vic2
     protected function update_video_settings() {
         // Screen enabled or not
         $this->screen_enabled = Utils::bit_test($this->cr1, 4);
+        $this->screen_enabled = true;
 
         // Set graphics mode between 0-7
-        $bmm = Utils::bit_test($this->cr1, 5) ? 1 : 0; // bitmap mode
-        $ecm = Utils::bit_test($this->cr1, 6) ? 1 : 0; // extended background mode
-        $mcm = Utils::bit_test($this->cr2, 4) ? 1 : 0; // multicolor mode
+        $bmm = Utils::bit_get($this->cr1, 5); // bitmap mode
+        $ecm = Utils::bit_get($this->cr1, 6); // extended background mode
+        $mcm = Utils::bit_get($this->cr2, 4); // multicolor mode
 
-        $this->graphics_mode = $bmm << 2 | $ecm << 1 | $mcm;
+        $this->graphics_mode = ($bmm << 2 | $ecm << 1 | $mcm);
         $this->logger->debug(sprintf("Setting VIC2 graphics mode to %02X\n", $this->graphics_mode));
     }
 
-    protected function findPixelToRender($x, $y) {
+    protected function findPixelToRender($x, $y)
+    {
         // We assume standard character mode
+        switch ($this->graphics_mode) {
+            case 0 :
+                // Standard character mode
+                $c = $this->charMode($x, $y, false, false);
+                break;
+            case 1:
+                // Multicolor character mode
+                $c = $this->charMode($x, $y, true, false);
+                break;
+            case 2:
+                // Standard bitmap mode
+                $c = 0;
+                break;
+            case 3:
+                // Multicolor bitmap mode
+                $c = 0;
+                break;
+            case 4:
+                // Extended background color character mode
+                $c = $this->charMode($x, $y, false, true);
+                $c = 0;
+                break;
+            case 5:
+                // Extended background color multicolor character mode
+                // Do not use
+                $c = 0;
+                break;
+            case 6:
+                // Extended background color standard bitmap mode
+                // Do not use
+                $c = 0;
+                break;
+            case 7:
+                // Extended background color multicolor bitmap bitmap mode
+                // Do not use
+                $c = 0;
+                break;
 
+            default :
+                $c = 0;
+
+        }
+        return ($c & 0x0F);
+    }
+
+    protected function getScreenMemoryOffset() {
+        $bank_offset = $this->cia2->getVicBank() * 0x4000;
+
+        // This is where the memory of the screen resides
+        $screenmem_offset = ($this->memory_setup >> 4) & 0x0F;
+        $screenmem_offset *= 0x400;
+        $screenmem_offset += $bank_offset;
+
+        return $screenmem_offset;
+    }
+
+    protected function getBitmapMemoryOffset() {
+        $bank_offset = $this->cia2->getVicBank() * 0x4000;
+
+        $bitmapmem_offset = ($this->memory_setup >> 3) & 0x01;
+        $bitmapmem_offset *= 0x2000;
+        $bitmapmem_offset += $bank_offset;
+
+        return $bitmapmem_offset;
+    }
+
+    protected function getCharMemoryOffset() {
+        $bank_offset = $this->cia2->getVicBank() * 0x4000;
+
+        $charmem_offset = ($this->memory_setup >> 1) & 0x07;
+        $charmem_offset *= 0x800;
+        $charmem_offset += $bank_offset;
+
+        return $charmem_offset;
+    }
+
+    /**
+     * @param $petscii_code
+     * @param $line
+     * @return int
+     */
+    protected function readCharBitmapLine($petscii_code, $line) {
+        // Find the location of the start of the character in the character memory
+        $location = $this->getCharMemoryOffset() + ($petscii_code * 8) + ($line % 8);
+
+        // This is tricky: 0x1000-0x1FFFF and 0x9000-0x9FFF are actually hardwired by
+        // the VIC to read from ROM instead of RAM
+
+        $readFromRom = false;
+        if ($location >= 0x1000 and $location <= 0x1FFF) {
+            $readFromRom = true;
+        }
+        if ($location >= 0x9000 and $location <= 0x9FFF) {
+            $readFromRom = true;
+        }
+
+        if ($readFromRom) {
+            // ROM starts at 0xD000 (actually read from $this->memory_offset)
+            $o = (($location % 0x7FFF) - 0x1000);
+            $bitmap_line = $this->memory->read8rom($this->memory_offset + $o);
+        } else {
+            // Everything else we can simply retrieve directly from RAM
+            $bitmap_line = $this->memory->read8ram($location);
+        }
+
+        return $bitmap_line;
+    }
+
+
+    function charMode($x, $y, $multi_color, $extended_mode = false) {
         // Find the actual char for pixel $x, $y
         $char_index = floor($y / 8) * 40 + floor($x / 8);
 
-        // This is where the memory of the screen resides
-        $screen_memory_start = ($this->memory_setup & 0xF0) >> 4;
-        $screen_memory_start *= 0x400;
-
         // Read the given character from the screen memory
-        $char = $this->memory->read8($screen_memory_start + $char_index);
-
-//        // Find C in character rom
-//        $bank_offset = 0;
-//        switch ($this->cr1 & 0x02) {
-//            case 0:
-//                $bank_offset = 0xC000;
-//                break;
-//            case 1:
-//                $bank_offset = 0x8000;
-//                break;
-//            case 2:
-//                $bank_offset = 0x4000;
-//                break;
-//            case 3:
-//                $bank_offset = 0x0000;
-//                break;
-//        }
-
-//        $char_memory_start = ($this->memory_setup & 0x0E) >> 1;
-//        $char_memory_start *= 0x800;
-
-        // Char rom is at 0x1000 from the VIC's pov.
+        $char = $this->memory->read8($this->getScreenMemoryOffset() + $char_index);
 
         // Find the start of the matching bitmap inside the character ROM
-        // @TODO: This seems off. We always assume 0xD000, but what if the ROM is copied to somewhere else in RAM???
-        $charrom_offset = $this->memory_offset + ($char * 8);        // Address from bank
-        $char_bitmap = $this->memory->read8rom($charrom_offset + ($y % 8));
+        $char_bitmap_line = $this->readCharBitmapLine($char, ($y % 8));
 
-        // Find color in colormap, or use background color
-        $pixel = Utils::bit_test($char_bitmap, 7 - ($x % 8));
-        $color = $pixel ? $this->memory->read8ram(0xD800 + $char_index) : $this->background_color;
+
+        // Assume the worst
+        $color = 0;
+
+        if ($multi_color) {
+            // Fetch two pixels from the bitmap (as 33221100 instead of the regular 76543210)
+
+            $x %= 8;
+            $x = (7 - $x);
+            $x >>= 1;
+            $pixel = ($char_bitmap_line >> ($x*2)) & 0x03;
+
+            switch ($pixel) {
+                case 0:
+                    $color = $this->background_color;
+                    break;
+                case 1:
+                    $color = $this->sprite_extra_background_color[0];
+                    break;
+                case 2:
+                    $color = $this->sprite_extra_background_color[1];
+                    break;
+                case 3:
+                    // Read from color RAM
+                    $color = $this->memory->read8ram(self::COLOR_RAM_ADDRESS + $char_index);
+                    break;
+            }
+
+        } else {
+            // Find color in colormap, or use background color
+            $pixel = Utils::bit_get($char_bitmap_line, 7 - ($x % 8));
+            switch ($pixel) {
+                case 0:
+                    // Pixel turned off. Use background color
+                    $color = $this->background_color;
+                    break;
+                case 1:
+                    if ($extended_mode) {
+                        // In extended mode, the color is decided by the last 2 pixels of the
+                        // actual character (meaning we can only use the first 64 chars)
+                        $color = ($char >> 6) & 0x03;
+                    } else {
+                        // Read from color RAM
+                        $color = $this->memory->read8ram(self::COLOR_RAM_ADDRESS + $char_index);
+                    }
+                    break;
+            }
+        }
 
         return ($color & 0x0F);
     }
