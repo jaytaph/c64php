@@ -9,7 +9,7 @@ class FileLogger implements LoggerInterface {
     protected $logfile;
 
     function __construct($path) {
-        $this->logfile = fopen($path, "w");
+        $this->logfile = fopen($path, "a");
 
         $this->log("*** Starting logfile ***\n");
     }
