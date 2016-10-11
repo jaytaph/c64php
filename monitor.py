@@ -85,20 +85,20 @@ keyboard_matrix = [
 c64colors = [
     pygame.Color(swaprgb("0x000000")),   # 0
     pygame.Color(swaprgb("0xFFFFFF")),
-    pygame.Color(swaprgb("0x880000")),
-    pygame.Color(swaprgb("0xAAFFEE")),
-    pygame.Color(swaprgb("0xCC44CC")),
-    pygame.Color(swaprgb("0x00CC55")),
-    pygame.Color(swaprgb("0x0000AA")),
-    pygame.Color(swaprgb("0xEEEE77")),
-    pygame.Color(swaprgb("0xDD8855")),   # 8
-    pygame.Color(swaprgb("0x664400")),
-    pygame.Color(swaprgb("0xFF7777")),
-    pygame.Color(swaprgb("0x333333")),
-    pygame.Color(swaprgb("0x777777")),
-    pygame.Color(swaprgb("0xAAFF66")),
-    pygame.Color(swaprgb("0x0088FF")),
-    pygame.Color(swaprgb("0xBBBBBB")),   # 15
+    pygame.Color(swaprgb("0x68372b")),
+    pygame.Color(swaprgb("0x70a4b2")),
+    pygame.Color(swaprgb("0x6f3d86")),
+    pygame.Color(swaprgb("0x588d43")),
+    pygame.Color(swaprgb("0x352879")),
+    pygame.Color(swaprgb("0xb8c76f")),
+    pygame.Color(swaprgb("0x6f4f25")),   # 8
+    pygame.Color(swaprgb("0x433900")),
+    pygame.Color(swaprgb("0x9a6759")),
+    pygame.Color(swaprgb("0x444444")),
+    pygame.Color(swaprgb("0x6c6c6c")),
+    pygame.Color(swaprgb("0x9ad284")),
+    pygame.Color(swaprgb("0x6c5eB5")),
+    pygame.Color(swaprgb("0x959595")),   # 15
 ]
 
 
