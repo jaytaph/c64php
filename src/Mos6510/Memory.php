@@ -40,9 +40,15 @@ class Memory {
     protected $bank = array();
 
     // Banks and bank modes
-    const BANK_BASIC    = 3;
-    const BANK_CHAR     = 5;
-    const BANK_KERNAL   = 6;
+    protected $bank_zones = array(
+        0 => array(0x0000, 0x0FFF),
+        1 => array(0x1000, 0x7FFF),
+        2 => array(0x8000, 0x9FFF),
+        3 => array(0xA000, 0xBFFF),
+        4 => array(0xC000, 0xCFFF),
+        5 => array(0xD000, 0xDFFF),
+        6 => array(0xE000, 0xFFFF),
+    );
 
     const BANKMODE_RAM = 0;     // Bank is RAM
     const BANKMODE_ROM = 1;     // Bank is ROM
@@ -56,11 +62,11 @@ class Memory {
     // It's hard to programmatically calculate bank modes based on the given bits. We use a lookup table instead
     protected $presetBanks = array(
         7 => array(self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_ROM, self::BANKMODE_ROM, self::BANKMODE_RAM, self::BANKMODE_IO , self::BANKMODE_ROM),
-        6 => array(self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_ROM, self::BANKMODE_RAM, self::BANKMODE_IO , self::BANKMODE_ROM),
+        6 => array(self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_IO , self::BANKMODE_ROM),
         5 => array(self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_IO , self::BANKMODE_RAM),
         4 => array(self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM),
         3 => array(self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_ROM, self::BANKMODE_ROM, self::BANKMODE_RAM, self::BANKMODE_ROM, self::BANKMODE_ROM),
-        2 => array(self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_ROM, self::BANKMODE_RAM, self::BANKMODE_ROM, self::BANKMODE_ROM),
+        2 => array(self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_ROM, self::BANKMODE_ROM),
         1 => array(self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM),
         0 => array(self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM),
     );
@@ -104,6 +110,8 @@ class Memory {
      * @param $value
      */
     protected function setupMemoryBankConfiguration($value) {
+        $old_bank = $this->bank;
+
         // It's a bit hard to program which banks are which modes for which value. We use a lookup table instead.
         // Note that we only use the CHAREN, HIRAM, LORAM. But we should also check GAME and EXROM (if available).
         // This gives a total of 32 different bank modes. We use only the first 7 and assume GAME and EXROM to be 0.
@@ -111,6 +119,12 @@ class Memory {
 
         // Write bank value directly to RAM
         $this->write8(0x0001, $value, self::WRITE_DIRECT_RAM);
+
+
+        if ($this->bank != $old_bank) {
+            $this->logger->debug(sprintf("Changing bank mode to %02X\n", ($value & 0x07)));
+            $this->logger->debug(print_r($this->bank, true));
+        }
     }
 
 
@@ -180,6 +194,19 @@ class Memory {
 
 
     /**
+     * Returns bank zone (0-6) based on address location
+     */
+    protected function getBankZone($location) {
+        foreach ($this->bank_zones as $zone => $bank_zone) {
+            if ($location >= $bank_zone[0] && $location <= $bank_zone[1]) {
+                return $zone;
+            }
+        }
+
+        $this->logger->error("Location not found in a bank zone.");
+    }
+
+    /**
      * Read a single memory location, based on configuration
      *
      * @param $location
@@ -187,59 +214,31 @@ class Memory {
      */
     public function read8($location)
     {
-        // Read from VIC IO or CHAR
-        if ($location >= 0xD000 && $location <= 0xD3FF) {
-            if ($this->bank[self::BANK_CHAR] == self::BANKMODE_IO) {
+        $zone = $this->getBankZone($location);
+
+        if ($this->bank[$zone] == self::BANKMODE_ROM) {
+            return $this->rom[$location];
+        }
+        if ($this->bank[$zone] == self::BANKMODE_RAM) {
+            return $this->ram[$location];
+        }
+
+        if ($this->bank[$zone] == self::BANKMODE_IO) {
+            if ($location >= 0xD000 && $location <= 0xD3FF) {
                 // read from vic IO
                 return $this->c64->getVic2()->read8($location);
-
-            } else if ($this->bank[self::BANK_CHAR] == self::BANKMODE_ROM) {
-                // read from rom
-                return $this->rom[$location];
-            } else {
-                return $this->ram[$location];
             }
-        }
-
-        // Read from CIA1
-        if ($location >= 0xDC00 && $location <= 0xDCFF) {
-            if ($this->bank[self::BANK_CHAR] == self::BANKMODE_IO) {
-                // read from cia register
+            if ($location >= 0xDC00 && $location <= 0xDCFF) {
+                // Read from CIA 1
                 return $this->c64->getCia1()->read8($location);
-            } else {
-                return $this->ram[$location];
             }
-        }
-
-        // Read from CIA2
-        if ($location >= 0xDD00 && $location <= 0xDDFF) {
-            if ($this->bank[self::BANK_CHAR] == self::BANKMODE_IO) {
-                // read from cia register
+            if ($location >= 0xDD00 && $location <= 0xDDFF) {
+                // Read from CIA 2
                 return $this->c64->getCia2()->read8($location);
-            } else {
-                return $this->ram[$location];
             }
         }
 
-        // Read from BASIC
-        if ($location >= 0xA000 && $location <= 0xBFFF) {
-            if ($this->bank[self::BANK_BASIC] == self::BANKMODE_ROM) {
-                return $this->rom[$location];
-            } else {
-                return $this->ram[$location];
-            }
-        }
-
-        // Read from Kernal
-        if ($location >= 0xE000 && $location <= 0xFFFF) {
-            if ($this->bank[self::BANK_KERNAL] == self::BANKMODE_ROM) {
-                return $this->rom[$location];
-            } else {
-                return $this->ram[$location];
-            }
-        }
-
-        // Default
+        // Fallthrough, read from RAM (happens when bank is IO, but not an IO address
         return $this->ram[$location];
     }
 
@@ -285,37 +284,28 @@ class Memory {
         if ($location == 0x0001) {
             // Zero page 0001 location: change bank configuration
             $this->setupMemoryBankConfiguration($value);
-
-        } else if ($location >= 0xD000 && $location <= 0xD3FF) {
-            // vic write
-            if ($this->bank[self::BANK_CHAR] == self::BANKMODE_IO) {
-                // write IO
-                $this->c64->getVic2()->write8($location, $value);
-            } else {
-                $this->ram[$location] = $value;
-            }
-
-        } else if ($location >= 0xDC00 && $location <= 0xDCFF) {
-            // cia1 write
-            if ($this->bank[self::BANK_CHAR] == self::BANKMODE_IO) {
-                // write IO
-                $this->c64->getCia1()->write8($location, $value);
-            } else {
-                $this->ram[$location] = $value;
-            }
-
-        } else if ($location >= 0xDD00 && $location <= 0xDDFF) {
-            // cia2 write
-            if ($this->bank[self::BANK_CHAR] == self::BANKMODE_IO) {
-                // write IO
-                $this->c64->getCia2()->write8($location, $value);
-            } else {
-                $this->ram[$location] = $value;
-            }
-
-        } else {
-            $this->ram[$location] = $value;
+            return;
         }
+
+        $zone = $this->getBankZone($location);
+
+        if ($this->bank[$zone] == self::BANKMODE_IO) {
+            if ($location >= 0xD000 && $location <= 0xD3FF) {
+                // Write to vic IO
+                return $this->c64->getVic2()->write8($location, $value);
+            }
+            if ($location >= 0xDC00 && $location <= 0xDCFF) {
+                // Write to CIA 1
+                return $this->c64->getCia1()->write8($location, $value);
+            }
+            if ($location >= 0xDD00 && $location <= 0xDDFF) {
+                // Write to CIA 2
+                return $this->c64->getCia2()->write8($location, $value);
+            }
+        }
+
+        // Default write to RAM
+        $this->ram[$location] = $value;
     }
 
 
