@@ -21,6 +21,9 @@ class Vic2
     /** @var Cpu */
     protected $cpu;
 
+    /** @var Cia2 */
+    protected $cia2;
+
     /** @var Memory */
     protected $memory;
 
@@ -89,6 +92,7 @@ class Vic2
 
         $this->cpu = $c64->getCpu();
         $this->memory = $c64->getMemory();
+        $this->cia2 = $c64->getCia2();      // Only needed to fetch VIC bank address
 
         $this->memory_offset = $memory_offset;
         $this->io = $io;

@@ -37,10 +37,15 @@ class Cia2 extends Cia1
         return $value;
     }
 
+    public function getVicBank() {
+        return ($this->data_port_a & 0x02);
+    }
+
     public function write8($location, $value) {
         // Locations are repeated every 16 bytes
         switch (($location - $this->memory_offset) & 0x0F) {
             case 0:
+                $this->data_port_a = $value;
                 break;
             case 1:
                 break;
