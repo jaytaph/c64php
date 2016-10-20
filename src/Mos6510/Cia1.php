@@ -95,9 +95,6 @@ class Cia1
             case 0x01:
                 // Port B data lines
                 $matrix = $this->io->readKeyboard();
-                if ($matrix[0] != 0 || $matrix[1] != 0) {
-                    print_r($matrix);
-                }
 
                 // Data port B has two modes: bits for RW and bits for RO. This is based on the data_dir_b entry.
 
