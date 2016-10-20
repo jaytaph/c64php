@@ -7,6 +7,8 @@ C64 Emulator written in PHP
 Still need to figure out how to deal with the output. I might connet to a websocket / browser 
 to write to canvas. Most likely the easiest way.
 
+![Screenshot](c64-screenshot-01.png)
+
 # TODO:
  - Debugger
  - Load C64 disks and tapes (hurrah)
