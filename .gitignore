@@ -1,2 +1,7 @@
 /vendor/
 *.log
+
+# Commodore disks,tapes and programs
+*.d64
+*.prg
+*.t64
