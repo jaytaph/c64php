@@ -127,7 +127,7 @@ class Vic2
             case 0x10 :
                 // Set bit I to 8th bit of sprite X offset
                 for ($i=0; $i!=8; $i++) {
-                    $value = Utils::bit_set($value, $i, Utils::bit_test($this->sprite_x[$i], 8));
+                    $value = Utils::bit_set($value, $i, Utils::bit_get($this->sprite_x[$i], 8));
                 }
                 break;
             case 0x11:
@@ -186,8 +186,8 @@ class Vic2
                 $value = ($this->background_color & 0x07);
                 break;
             case 0x22:
-            case 0x24:
             case 0x23:
+            case 0x24:
                 $value = ($this->sprite_extra_background_color[$address - 0x22] & 0x07);
                 break;
             case 0x25:
@@ -218,6 +218,8 @@ class Vic2
     public function write8($location, $value) {
         $address = $location - $this->memory_offset;
         $address %= 0x40; // Make sure we always use 0xD000-0xD03F. Vic2 repeats every 0x40 bytes
+        
+        $this->logger->debug(sprintf("VIC2: Writing %02X to %04X\n", $value, $location));
 
         switch ($address) {
             case 0x11 :
@@ -301,9 +303,9 @@ class Vic2
 
     public function cycle() {
         // Are there still unacknowledged interrupts pending?
-        if (Utils::bit_test($this->interrupt_status, 7) == 1) {
+        if (Utils::bit_test($this->interrupt_status, 7)) {
             // Trigger IRQ when enabled
-            if ($this->cpu->flagIsSet(Cpu::P_FLAG_IRQ_DISABLE) == 0) {
+            if (! $this->cpu->flagIsSet(Cpu::P_FLAG_IRQ_DISABLE)) {
                 $this->cpu->triggerIrq();
             }
             return;

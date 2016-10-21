@@ -130,6 +130,7 @@ class Cpu
         $this->writePc($this->memory->read16($vector));
         $this->tick(7);
     }
+
     /**
      * Returns the current ticks
      * @return int

@@ -56,4 +56,15 @@ class Utils {
         return ((($value >> $bit_position) & 0x01) == 0x01);
     }
 
+    /**
+     * Get specific bit. Returns either (int)0 or (int)1
+     *
+     * @param $value
+     * @param $bit_position
+     * @return int
+     */
+    static function bit_get($value, $bit_position) {
+        return Utils::bit_test($value, $bit_position) ? 1 : 0;
+    }
+
 }

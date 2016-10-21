@@ -310,13 +310,13 @@ class Cia1
                 // @TODO: These are hard
 //                    $this->timer_a_underflow = Utils::bit_test($value, 1);
 //                    $this->timer_a_overflow_mode = Utils::bit_test($value, 2);
-                $this->timer_a_restart_mode = Utils::bit_test($value, 3);
+                $this->timer_a_restart_mode = Utils::bit_get($value, 3);
                 if (Utils::bit_test($value, 4)) {
                     $this->timer_a = $this->timer_a_latch;
                 }
-                $this->timer_a_count_mode = Utils::bit_test($value, 5);
-                $this->ssr_direction = Utils::bit_test($value, 6);
-                $this->rtc_speed = Utils::bit_test($value, 7);
+                $this->timer_a_count_mode = Utils::bit_get($value, 5);
+                $this->ssr_direction = Utils::bit_get($value, 6);
+                $this->rtc_speed = Utils::bit_get($value, 7);
                 break;
             case 0x0F:
                 // Control timer B
@@ -324,7 +324,7 @@ class Cia1
                 // @TODO: These are hard
 //                    $this->timer_b_underflow = Utils::bit_test($value, 1);
 //                    $this->timer_b_overflow_mode = Utils::bit_test($value, 2);
-                $this->timer_b_restart_mode = Utils::bit_test($value, 3);
+                $this->timer_b_restart_mode = Utils::bit_get($value, 3);
                 if (Utils::bit_test($value, 4)) {
                     $this->timer_b = $this->timer_b_latch;
                 }
@@ -384,7 +384,7 @@ class Cia1
                     // Interrupt status: Underflow of timer A occurred
                     $this->interrupt_status = Utils::bit_set($this->interrupt_status, 0, 1);
 
-                    if ($this->timer_a_irq_enabled && $this->cpu->flagIsSet(Cpu::P_FLAG_IRQ_DISABLE) == 0) {
+                    if ($this->timer_a_irq_enabled && ! $this->cpu->flagIsSet(Cpu::P_FLAG_IRQ_DISABLE)) {
                         // Fire IRQ
                         $this->cpu->triggerIrq();
 
@@ -422,7 +422,7 @@ class Cia1
                     // Interrupt status: Underflow of timer B occurred
                     $this->interrupt_status = Utils::bit_set($this->interrupt_status, 1, 1);
 
-                    if ($this->timer_b_irq_enabled && $this->cpu->flagIsSet(Cpu::P_FLAG_IRQ_DISABLE) == 0) {
+                    if ($this->timer_b_irq_enabled && ! $this->cpu->flagIsSet(Cpu::P_FLAG_IRQ_DISABLE)) {
                         // Fire IRQ if needed
                         $this->cpu->triggerIrq(); // @TODO: NMI?
 

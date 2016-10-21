@@ -1004,7 +1004,7 @@ class Opcoder {
                 break;
 
             default:
-                $this->cpu->logger->error(sprintf('Invalid opcode detected at %04X', $this->cpu->readPc()));
+                $this->cpu->logger->error(sprintf('Invalid opcode %02X detected at %04X', $opcode, $this->cpu->readPc()));
                 break;
         }
     }
