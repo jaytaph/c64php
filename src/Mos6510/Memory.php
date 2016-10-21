@@ -123,7 +123,6 @@ class Memory {
 
         if ($this->bank != $old_bank) {
             $this->logger->debug(sprintf("Changing bank mode to %02X\n", ($value & 0x07)));
-            $this->logger->debug(print_r($this->bank, true));
         }
     }
 

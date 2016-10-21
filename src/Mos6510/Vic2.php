@@ -66,8 +66,8 @@ class Vic2
 
     protected $border_color = 0;            // Default border color
 
-    protected $graphics_mode = 0;       // Actual screen mode (0-7)
-    protected $screen_enabled = 0;      // Screen is enabled
+    protected $graphics_mode = 0;           // Actual screen mode (0-7)
+    protected $screen_enabled = 0;          // Screen is enabled
 
     // At which pixel are we currently drawing onto the monitor? (0 - 157248). Includes HBLANK and VLANK regions as well
     protected $raster_beam = 0;
@@ -355,7 +355,7 @@ class Vic2
         }
 
         // Iterate 8 times (so we get 8 VIC cycles on each cycle)
-        for ($i=0; $i!=64; $i++) {
+        for ($i=0; $i!=8; $i++) {
 
             // X / Y coordinates are starting from the top left HBLANK (404x312)
             $x = $this->raster_beam % 404;
