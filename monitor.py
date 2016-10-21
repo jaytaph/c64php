@@ -48,8 +48,8 @@ def write_key(event, key):
     packed_rows = np.packbits(keyboard_row_bits)
 
     # Write the row/col bytes at the end of the monitor buffer
-    smh.write(packed_cols[0], 114454)
-    smh.write(packed_rows[0], 114454 + 1)
+    smh.write(packed_cols[0], 117384)
+    smh.write(packed_rows[0], 117384 + 1)
 
 
 def update_screen():
@@ -57,12 +57,12 @@ def update_screen():
         Updates the screen with the contents of the shared memory
         """
         # Fetch color numbers from shared memory
-        buf = smh.read(284 * 403, 2)
+        buf = smh.read(292 * 402, 2)
 
         # Place colors on monitor screen
-        for y in xrange(284):
-            for x in xrange(403):
-                c = ord(buf[y * 403 + x]) & 15
+        for y in xrange(292):
+            for x in xrange(402):
+                c = ord(buf[y * 402 + x]) & 15
                 pixels[x][y] = c64colors[c]
 
         pygame.display.flip()
@@ -112,7 +112,7 @@ if __name__ == "__main__":
 
     # Init monitor
     pygame.init()
-    screen = pygame.display.set_mode( (403,284) )
+    screen = pygame.display.set_mode( (402,292) )
     pixels = pygame.surfarray.pixels2d(screen)
     pygame.display.set_caption("C64 Monitor")
 
