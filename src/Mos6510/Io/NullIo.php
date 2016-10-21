@@ -13,4 +13,7 @@ class NullIo implements IoInterface {
     public function writeMonitorBuffer($buf) {
     }
 
+    public function enableOutput($output) {
+    }
+
 }

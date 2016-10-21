@@ -41,6 +41,7 @@ class C64 {
     public function __construct(LoggerInterface $logger, IoInterface $io, $clock_freq = self::CLOCK_PAL)
     {
         $this->logger = $logger;
+        $this->io = $io;
 
         // Create / initialize the different components. We use the C64 as a base for components to reach others
         $this->memory= new Memory($this, $this->logger);
@@ -65,6 +66,8 @@ class C64 {
                 $this->cycle();
             } while ($pc != 0xA65C);
         }
+
+        $this->io->enableOutput(true);
     }
 
     /**

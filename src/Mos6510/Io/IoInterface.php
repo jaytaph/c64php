@@ -26,4 +26,6 @@ interface IoInterface {
      * Returns 2 bytes rows,cols on keyboard matrix
      */
     public function readKeyboard();
+
+    public function enableOutput($output);
 }

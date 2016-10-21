@@ -87,7 +87,7 @@ class Vic2
      */
     public function __construct(C64 $c64, $memory_offset, IoInterface $io, LoggerInterface $logger)
     {
-        $this->buffer = str_repeat(chr(0), 504 * 312);
+        $this->buffer = str_repeat(chr(0), 404 * 312);
 
         $this->cpu = $c64->getCpu();
         $this->memory = $c64->getMemory();
@@ -418,7 +418,7 @@ class Vic2
                 // Should this also be reset here?
                 $this->raster_line = 0;
 
-//                $diff = microtime(true) - $this->raster_start;
+                $diff = microtime(true) - $this->raster_start;
 //                print "Raster done within $diff \n";
                 $this->raster_start = microtime(true);
             }
