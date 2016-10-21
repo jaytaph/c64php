@@ -90,7 +90,7 @@ class Cia1
             case 0x00:
                 // Port A data lines
                 // @TODO: Make sure data port A functions
-                $value = 0;
+                $value = 0xFF;
                 break;
             case 0x01:
                 // Port B data lines
@@ -209,7 +209,8 @@ class Cia1
     }
 
 
-    public function writeIo($location, $value) {
+    public function writeIo($location, $value)
+    {
         // Locations are repeated every 16 bytes
         switch (($location - $this->memory_offset) & 0x0F) {
             case 0x00:
