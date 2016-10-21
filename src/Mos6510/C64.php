@@ -54,9 +54,17 @@ class C64 {
 
     /**
      * Boot up the C64
+     * @param bool $wait_for_basic_ready
      */
-    public function boot() {
+    public function boot($wait_for_basic_ready = true) {
         $this->cpu->boot();
+
+        if ($wait_for_basic_ready) {
+            do {
+                $pc = $this->cpu->readPc();
+                $this->cycle();
+            } while ($pc != 0xA65C);
+        }
     }
 
     /**
