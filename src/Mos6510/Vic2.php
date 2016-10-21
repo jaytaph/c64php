@@ -131,7 +131,7 @@ class Vic2
             case 0x0D :
             case 0x0F :
                 $sprite_offset = ($address - 1) / 2;
-                $value = $this->sprite_x[(int)$sprite_offset] & 0xFF;
+                $value = $this->sprite_y[(int)$sprite_offset] & 0xFF;
                 break;
             case 0x10 :
                 // Set bit I to 8th bit of sprite X offset
@@ -209,7 +209,7 @@ class Vic2
             case 0x2C:
             case 0x2D:
             case 0x2E:
-                $sprite_offset = $address - 0x27;
+                $sprite_offset = ($address - 0x27);
                 $value = $this->sprite_colors[$sprite_offset];
                 break;
             default:
@@ -244,8 +244,7 @@ class Vic2
                 $sprite_offset = (int)($address / 2);
 
                 // Make sure we mask off bit 9. It must not change.
-                $v = $this->sprite_x[$sprite_offset];
-                $v &= 0x100;
+                $v = $this->sprite_x[$sprite_offset] & 0x100;
                 $v |= ($value & 0xFF);
                 $this->sprite_x[$sprite_offset] = $v;
                 break;
@@ -334,7 +333,7 @@ class Vic2
             case 0x2C:
             case 0x2D:
             case 0x2E:
-                $this->sprite_colors[0x27 - $address] = ($value & 0x0F);
+                $this->sprite_colors[$address - 0x27] = $value;
                 break;
             default:
                 // Other address are unused
@@ -356,40 +355,36 @@ class Vic2
         }
 
         // Iterate 8 times (so we get 8 VIC cycles on each cycle)
-        for ($i=0; $i!=8; $i++) {
+        for ($i=0; $i!=64; $i++) {
 
-            // X / Y coordinates are starting from the top left HBLANK (504x312)
-            $x = $this->raster_beam % 504;
-            $y = ($this->raster_beam - $x) / 504;
+            // X / Y coordinates are starting from the top left HBLANK (404x312)
+            $x = $this->raster_beam % 404;
+            $y = ($this->raster_beam - $x) / 404;
 
             // Check if X and Y are in non-blank region
-            if ($x > 51 && $x <= 454 && $y > 14 && $y <= 298) {
+            if ($x > 2 && $y > 7 && $y <= 7 + 43 + 200 + 49) {
 
-                // X / Y coordinates are now starting from the top left border (403x284)
-                $x -= 52;
-                $y -= 15;
+                // X / Y coordinates are now starting from the top left border (402x292)
+                $x -= 2;
+                $y -= 7;
 
-                if (($x > 42 && $x <= 362 && $y > 42 && $y <= 242) && $this->screen_enabled) {
-                    // X / Y coordinates are now starting from the top left screen (320x200)
-                    $x -= 43;
-                    $y -= 43;
+                if (($x > 46 && $x <= 46 + 320 && $y > 43 && $y <= 43 + 200) && $this->screen_enabled) {
 
                     // Set current raster line
-                    $this->raster_line = $y;
+                    $this->raster_line = $y - 43;
 
                     // Find the exact pixel color for the given position (based on screenmode, sprites, textdata etc)
-                    $p = $this->findPixelToRender($x, $y);
-
-                    // Check sprites
-                    $p = $this->handleSprites($x+43, $y+43, $p);
-
-                    // Write to monitor. Make sure we take border offset into account
-                    $this->buffer[(43+$y) * 403 + (43+$x)] = chr($p);
-
+                    $p = $this->findPixelToRender($x - 46, $y - 43);
                 } else {
                     // Write border to monitor
-                    $this->buffer[$y * 403 + $x] = chr($this->border_color);
+                    $p = $this->border_color;
                 }
+
+                // Check sprites and change pixel color if overlapped by any sprite(s)
+                $p = $this->handleSprites($x - 20, $y + 7, $p);
+
+                // Write pixel to buffer
+                $this->buffer[$y * 402 + $x] = chr($p);
 
             } else {
                 // HBLANK or VBLANK
@@ -409,7 +404,7 @@ class Vic2
 
 
             // Reset raster beam when we reached end of screen
-            if ($this->raster_beam >= (504 * 312)) {
+            if ($this->raster_beam >= (404 * 312)) {
                 $this->io->writeMonitorBuffer($this->buffer);
 
                 // Go back to left top corner
@@ -544,6 +539,16 @@ class Vic2
         return $charmem_offset;
     }
 
+    protected function getSpriteShapeOffset($sprite_idx) {
+        $bank_offset = $this->cia2->getVicBank() * 0x4000;
+
+        // Fetch the "index" of the sprite spape (0-255)
+        $location = $this->getScreenMemoryOffset() + self::SPRITE_VECTOR_OFFSET + $sprite_idx;
+        $index = $this->memory->read8($location);
+
+        return $bank_offset + ($index * 64);
+    }
+
     /**
      * Reads a color from color ram at specified index
      *
@@ -617,18 +622,17 @@ class Vic2
     /**
      * Handle a single sprite
      *
-     * @param $i
+     * @param $sprite_idx
      * @param $x
      * @param $y
      * @param $color
      */
-    protected function handleSprite($i, $x, $y, $color) {
+    protected function handleSprite($sprite_idx, $x, $y, $color) {
         // Fetch location of the sprite
-        $location = $this->getScreenMemoryOffset() + self::SPRITE_VECTOR_OFFSET + $i;
-        $location = $this->memory->read8($location);
+        $location = $this->getSpriteShapeOffset($sprite_idx);
 
-        $x_coord = $this->sprite_x[$i];
-        $y_coord = $this->sprite_y[$i];
+        $x_coord = $this->sprite_x[$sprite_idx];
+        $y_coord = $this->sprite_y[$sprite_idx];
 
         // @TODO: Double width / height
         $size_x = 24;
@@ -648,10 +652,11 @@ class Vic2
 
             $value = $this->memory->read8($location + $byte_offset);
 
-            if (Utils::bit_test($this->sprite_multicolor, $i)) {
+            if (Utils::bit_test($this->sprite_multicolor, $sprite_idx)) {
                 // Multicolor sprite
                 $bit_offset >>= 1;
                 $bit_offset *= 2;
+
                 switch (($value >> $bit_offset) & 0x03) {
                     case 0:
                         // Color is the current default color
@@ -662,7 +667,7 @@ class Vic2
                     case 2:
                         // Note that 2 (bit pair 10) will use sprite colors. This is
                         // different than other modes that use multicolor.
-                        $color = $this->sprite_colors[$i];
+                        $color = $this->sprite_colors[$sprite_idx];
                         break;
                     case 3:
                         $color = $this->sprite_extra_color[1];
@@ -670,13 +675,8 @@ class Vic2
                 }
             } else {
                 if (Utils::bit_get($value, $bit_offset)) {
-                    $color = $this->sprite_colors[$i];
+                    $color = $this->sprite_colors[$sprite_idx];
                 }
-            }
-
-            if ($i == 1) {
-                printf("S: %02d C: %02X L: %04X  V: %02X   X: %04d  Y: %04d OFF: %04d  BYO: %04d  BIO: %04d\n",
-                        $i, $color, $location, $value, $x, $y, $offset, $byte_offset, $bit_offset);
             }
         }
 
