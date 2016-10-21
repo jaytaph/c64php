@@ -65,8 +65,8 @@ class ShmIo implements IoInterface {
 
     protected function loadLogo($logo) {
         $buf = str_repeat(chr(0), self::BUFFER_SIZE);
-        $img = imagecreatefrompng($logo);
 
+        $img = imagecreatefrompng($logo);
         if (!$img) {
             return $buf;
         }
@@ -75,7 +75,7 @@ class ShmIo implements IoInterface {
         for ($y=0; $y!=200; $y++) {
             for ($x=0; $x!=320; $x++) {
                 $c = imagecolorat($img, $x, $y);
-                $buf[$off + 43 + $x] = ($c & 0x0F);
+                $buf[$off + 43 + $x] = chr($c & 0x0E);
             }
             $off += 402;
         }

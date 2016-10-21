@@ -120,6 +120,8 @@ class Cia1
                 // @TODO Make sure we merge the RO bits as well?
 //                $value |= ($ro_value & $this->data_dir_b);
 
+
+
                 break;
             case 0x02:
                 // Data direction port A
