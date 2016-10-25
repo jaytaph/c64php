@@ -34,7 +34,7 @@ class Cpu
     protected $irq_triggered = false;
 
     // @var int The IRQ status. We enter, leave or
-    public $irq_status = 3;
+    public $irq_status = self::IRQ_OUTSIDE;
 
     const IRQ_ENTERING  = 3;        // We are entering an IRQ on the next cycle
     const IRQ_INSIDE    = 2;        // We are inside an IRQ
@@ -98,6 +98,8 @@ class Cpu
     public function tick($ticks) {
         $this->ticks += $ticks;
     }
+
+    protected $irq_last = 0;
 
     /**
      * Perform a single cycle

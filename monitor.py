@@ -57,12 +57,14 @@ def update_screen():
         Updates the screen with the contents of the shared memory
         """
         # Fetch color numbers from shared memory
-        buf = smh.read(292 * 402, 2)
+        buf = smh.read(292 * 402, 0)
 
         # Place colors on monitor screen
+        i = 0
         for y in xrange(292):
             for x in xrange(402):
-                c = ord(buf[y * 402 + x]) & 15
+                c = ord(buf[i]) & 15
+                i = i + 1
                 pixels[x][y] = c64colors[c]
 
         pygame.display.flip()

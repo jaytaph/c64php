@@ -2,8 +2,6 @@
 
 namespace Mos6510\Io;
 
-use Mos6510\Utils;
-
 class ShmIo implements IoInterface {
 
     const SHM_KEY = 0x6303b5eb;
@@ -11,40 +9,40 @@ class ShmIo implements IoInterface {
 
     const BUFFER_SIZE = 117384 + 2;
 
-    protected $output;
+    protected $output_enabled;
 
     public function __construct()
     {
         $this->shm_id = shmop_open(self::SHM_KEY, "c", 0644, self::BUFFER_SIZE);
 
         // Clear the screen of the monitor
-//        shmop_write($this->shm_id, str_repeat(chr(0), self::BUFFER_SIZE), 2);
-        shmop_write($this->shm_id, $this->loadLogo("logo.png"), 2);
+        shmop_write($this->shm_id, str_repeat(chr(0), self::BUFFER_SIZE), 0);
+        shmop_write($this->shm_id, $this->loadLogo("logo.png"), 0);
 
         // Initial clear of the keyboard
         shmop_write($this->shm_id, str_repeat(chr(0), 2), 117384);
     }
 
     public function writeMonitorBuffer($buf) {
-        if (! $this->output) {
+        if (! $this->output_enabled) {
             return;
         }
 
-        shmop_write($this->shm_id, $buf, 2);
+        shmop_write($this->shm_id, $buf, 0);
     }
 
     public function writeMonitor($x, $y, $p) {
-        if (! $this->output) {
+        if (! $this->output_enabled) {
             return;
         }
 
         $offset = ($y * 402) + $x;
 
-        if ($offset >= 117384) {
+        if ($offset >= 117384-1) {
             // Can't write off the screen
             return;
         }
-        shmop_write($this->shm_id, $p, 2 + $offset);
+        shmop_write($this->shm_id, $p, 0 + $offset);
     }
 
     public function readKeyboard()
@@ -55,11 +53,11 @@ class ShmIo implements IoInterface {
     }
 
     /**
-     * @param mixed $output
+     * @param mixed $output_enabled
      */
-    public function enableOutput($output)
+    public function enableOutput($output_enabled)
     {
-        $this->output = $output;
+        $this->output_enabled = $output_enabled;
     }
 
 

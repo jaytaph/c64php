@@ -23,7 +23,7 @@ define('SCREEN_UPDATE', 10000);        // Update screen after these amount of CP
 
 // Create out CPU
 $c64 = new C64(new NullLogger(), new NullIo());
-$c64->boot();
+$c64->boot(false);
 
 // Create disassembler
 $disassembler = new Disassembler($c64);
