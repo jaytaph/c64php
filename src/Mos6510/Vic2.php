@@ -87,7 +87,7 @@ class Vic2
      */
     public function __construct(C64 $c64, $memory_offset, IoInterface $io, LoggerInterface $logger)
     {
-        $this->buffer = str_repeat(chr(0), 404 * 312);
+        $this->buffer = str_repeat(chr(0), 402 * 292);
 
         $this->cpu = $c64->getCpu();
         $this->memory = $c64->getMemory();
@@ -362,13 +362,13 @@ class Vic2
             $y = ($this->raster_beam - $x) / 404;
 
             // Check if X and Y are in non-blank region
-            if ($x > 2 && $y > 7 && $y <= 7 + 43 + 200 + 49) {
+            if ($x >= 2 && $y >= 7 && $y < 7 + 43 + 200 + 49) {
 
                 // X / Y coordinates are now starting from the top left border (402x292)
                 $x -= 2;
                 $y -= 7;
 
-                if (($x > 46 && $x <= 46 + 320 && $y > 43 && $y <= 43 + 200) && $this->screen_enabled) {
+                if (($x >= 46 && $x < 46 + 320 && $y > 43 && $y < 43 + 200) && $this->screen_enabled) {
 
                     // Set current raster line
                     $this->raster_line = $y - 43;
@@ -381,7 +381,9 @@ class Vic2
                 }
 
                 // Check sprites and change pixel color if overlapped by any sprite(s)
-                $p = $this->handleSprites($x - 20, $y + 7, $p);
+                if ($this->sprite_enable > 0) {
+                    $p = $this->handleSprites($x - 20, $y + 7, $p);
+                }
 
                 // Write pixel to buffer
                 $this->buffer[$y * 402 + $x] = chr($p);

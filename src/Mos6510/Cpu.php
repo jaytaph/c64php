@@ -99,7 +99,7 @@ class Cpu
         $this->ticks += $ticks;
     }
 
-    protected $irq_last = 0;
+
 
     /**
      * Perform a single cycle
@@ -111,6 +111,7 @@ class Cpu
 
             $this->setIrqStatus(self::IRQ_ENTERING);
             $this->handleInterrupt(self::IRQ_BRK_VECTOR);
+
             return;
         }
 

@@ -61,6 +61,7 @@ class C64 {
         $this->cpu->boot();
 
         if ($wait_for_basic_ready) {
+            // Execute until we reach a certain point in kernel ram. This can be assumed as the "start" of basic.
             do {
                 $pc = $this->cpu->readPc();
                 $this->cycle();
@@ -71,13 +72,31 @@ class C64 {
     }
 
     /**
-     * Do a cycle for a single instruction. This will take between 2-7 cycles.
+     * Cycle
      */
     public function cycle() {
+        $t1 = microtime(true);
+
+        $start_tick = $this->getCpu()->getTickCount();
         $this->cpu->cycle();
+
+        // Set the tick counter for the current number of ticks that the CPU cycle needed
+        $tick_counter = $this->getCpu()->getTickCount() - $start_tick;
+
+        // Since Cpu::cycle() uses X amount of cycles, we must make sure that the Vic stays in sync by also executing
+        // that many cycles.
+        //
+        // Normally it will be:  cpu-vic-cpu-vic-....
+        // In the emulator it will be: cpu-cpu-cpu-vic-vic-vic-cpu-cpu-vic-vic-....
+        while ($tick_counter > 0) {
+            $tick_counter--;
+            $this->vic2->cycle();
+        }
+
+        // Do CIA's. They are synced on 60hz by themselves by using the host microtime().
         $this->cia1->cycle();
         $this->cia2->cycle();
-        $this->vic2->cycle();
+
     }
 
     /**

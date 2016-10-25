@@ -24,8 +24,13 @@ class Memory {
     const ZERO_PAGE_ADDR    = 0x0000;       // Zero page address
     const STACK_PAGE_ADDR   = 0x0100;       // Stack page address
 
-    const WRAP_BOUNDARY = true;
-    const NOWRAP_BOUNDARY = false;
+    // Default memory addresses
+    const BASIC_ADDR        = 0xA000;   // Basic rom page start
+    const CHARACTER_ADDR    = 0xD000;   // Vic-ii ROM address
+    const KERNAL_ADDR       = 0xE000;   // Kernal rom page start
+
+    const WRAP_BOUNDARY = true;         // Wrap memory inside page (16 byte from 0x.FFF will wrap to 0x.000)
+    const NOWRAP_BOUNDARY = false;      // Don't wrap memory inside page
 
     const WRITE_DIRECT_RAM = false;            // When we need to read/write memory directly from RAM (without IO interfering)
     const WRITE_WITH_IO = true;                // When we need to read/write memory or IO, depending on the bank configuration (default)
@@ -36,10 +41,10 @@ class Memory {
     /* Complete memory map for ROM, note that not all the memory is mapped in this ROM */
     protected $rom = array();
 
-    /* Each bank is 8K and can be RAM,ROM or IO. Not all banks can be changed, just 3, 5 and 6 */
-    protected $bank = array();
+    /* Current bank layout (copied from the preset_banks) */
+    protected $current_bank_layout = array();
 
-    // Banks and bank modes
+    // Actual locations of the given banks (they differ in size)
     protected $bank_zones = array(
         0 => array(0x0000, 0x0FFF),
         1 => array(0x1000, 0x7FFF),
@@ -49,18 +54,14 @@ class Memory {
         5 => array(0xD000, 0xDFFF),
         6 => array(0xE000, 0xFFFF),
     );
+    // Banks and bank modes
 
     const BANKMODE_RAM = 0;     // Bank is RAM
     const BANKMODE_ROM = 1;     // Bank is ROM
     const BANKMODE_IO  = 2;     // Bank is IO
 
-    // Default memory addresses
-    const BASIC_ADDR        = 0xA000;   // Basic rom page start
-    const CHARACTER_ADDR    = 0xD000;   // Vic-ii ROM address
-    const KERNAL_ADDR       = 0xE000;   // Kernal rom page start
-
     // It's hard to programmatically calculate bank modes based on the given bits. We use a lookup table instead
-    protected $presetBanks = array(
+    protected $preset_bank_layout = array(
         7 => array(self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_ROM, self::BANKMODE_ROM, self::BANKMODE_RAM, self::BANKMODE_IO , self::BANKMODE_ROM),
         6 => array(self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_IO , self::BANKMODE_ROM),
         5 => array(self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_RAM, self::BANKMODE_IO , self::BANKMODE_RAM),
@@ -82,16 +83,17 @@ class Memory {
         $this->logger = $logger;
         $this->c64 = $c64;
 
+        $this->ram = new \SplFixedArray(self::MEMORY_SIZE);
+        $this->rom = new \SplFixedArray(self::MEMORY_SIZE);
+
         // Initialize RAM and ROM to zero
         for ($i=0; $i!=self::MEMORY_SIZE; $i++) {
             $this->ram[$i] = (int)0;
             $this->rom[$i] = (int)0;
         }
 
-        // Default all banks to RAM
-        for ($i=0; $i!=7; $i++) {
-            $this->bank[$i] = self::BANKMODE_RAM;
-        }
+        // Setup default banks
+        $this->setupMemoryBankConfiguration(0x37);
 
         // Load ROMs at certain locations
         $this->loadRom("./rom/64c.251913-01.bin",    0, 8192, self::BASIC_ADDR);
@@ -101,8 +103,9 @@ class Memory {
         // Processor port data register.
         $this->write8(0x0000, 0x2F, self::WRITE_DIRECT_RAM);
 
-        // Setup default banks
-        $this->setupMemoryBankConfiguration(0x37);
+        // This speeds up the bootup sequence, as it will not completely check RAM.
+        $this->hackRom(0xFD84, Opcoder::OPCODE_DEY);
+        $this->hackRom(0xFD85, Opcoder::OPCODE_NOP2);
     }
 
 
@@ -110,18 +113,17 @@ class Memory {
      * @param $value
      */
     protected function setupMemoryBankConfiguration($value) {
-        $old_bank = $this->bank;
+        $old_bank = $this->current_bank_layout;
 
         // It's a bit hard to program which banks are which modes for which value. We use a lookup table instead.
         // Note that we only use the CHAREN, HIRAM, LORAM. But we should also check GAME and EXROM (if available).
         // This gives a total of 32 different bank modes. We use only the first 7 and assume GAME and EXROM to be 0.
-        $this->bank = $this->presetBanks[($value & 0x07)];
+        $this->current_bank_layout = $this->preset_bank_layout[($value & 0x07)];
 
         // Write bank value directly to RAM
         $this->write8(0x0001, $value, self::WRITE_DIRECT_RAM);
 
-
-        if ($this->bank != $old_bank) {
+        if ($this->current_bank_layout != $old_bank) {
             $this->logger->debug(sprintf("Changing bank mode to %02X\n", ($value & 0x07)));
         }
     }
@@ -137,19 +139,27 @@ class Memory {
      * @throws \Exception
      */
     public function loadRom($rom_file, $file_offset, $length, $memory_offset) {
-        $f = fopen($rom_file, "r");
+        $f = fopen($rom_file, "rb");
         if (! $f) {
             throw new \Exception("Cannot load ROM file: ".$rom_file);
         }
 
         fseek($f, $file_offset, SEEK_SET);
-        $rom = fread($f, $length);
+        $data = fread($f, $length);
+        $rom = unpack("C*", $data);
 
         for ($i=0; $i!=$length; $i++) {
-            $this->rom[$memory_offset + $i] = ord($rom[$i]);
+            $this->rom[$memory_offset + $i] = $rom[$i+1];
         }
 
         fclose($f);
+    }
+
+    /**
+     * Internal use: used for hacking some ROM functionality.
+     */
+    public function hackRom($location, $value) {
+        $this->rom[$location] = $value;
     }
 
     /**
@@ -158,15 +168,23 @@ class Memory {
      * @param $prg_file
      * @throws \Exception
      */
-    public function loadPrg($prg_file) {
-        $prg = file_get_contents($prg_file);
-        if (! $prg) {
+    public function loadPrg($prg_file, $auto_run = false) {
+        $prg = unpack("C*", file_get_contents($prg_file));
+        if (count($prg) == 0) {
             throw new \Exception("Cannot load PRG file: ".$prg_file);
         }
 
-        $offset = ord($prg[1]) * 256 + ord($prg[0]);
-        for ($i=2; $i < strlen($prg); $i++) {
-            $this->ram[$offset + $i - 2] = ord($prg[$i]);
+        $offset = $prg[2] * 256 + $prg[1];
+        for ($i=2; $i!=count($prg); $i++) {
+            $this->ram[$offset + $i - 2] = $prg[$i + 1];
+        }
+
+        if ($auto_run) {
+            $this->write8(0xC6, 4);           // Add RUN<enter> into keyboard buffer
+            $this->write8(0x277, 82);
+            $this->write8(0x278, 85);
+            $this->write8(0x279, 78);
+            $this->write8(0x27A, 13);
         }
     }
 
@@ -189,7 +207,7 @@ class Memory {
         $rom = fread($f, $length);
 
         for ($i=0; $i!=$length; $i++) {
-            $this->ram[$memory_offset + $i] = ord($rom[$i]);
+            $this->ram[$memory_offset + $i] = $rom[$i];
         }
 
         fclose($f);
@@ -221,6 +239,7 @@ class Memory {
         }
 
         $this->logger->error("Location not found in a bank zone.");
+        return self::BANKMODE_RAM;
     }
 
     /**
@@ -231,16 +250,17 @@ class Memory {
      */
     public function read8($location)
     {
-        $zone = $this->getBankZone($location);
+        $zone = $this->current_bank_layout[$this->getBankZone($location)];
 
-        if ($this->bank[$zone] == self::BANKMODE_ROM) {
-            return $this->rom[$location];
-        }
-        if ($this->bank[$zone] == self::BANKMODE_RAM) {
+        if ($zone == self::BANKMODE_RAM) {
             return $this->ram[$location];
         }
 
-        if ($this->bank[$zone] == self::BANKMODE_IO) {
+        if ($zone == self::BANKMODE_ROM) {
+            return $this->rom[$location];
+        }
+
+        if ($zone == self::BANKMODE_IO) {
             if ($location >= 0xD000 && $location <= 0xD3FF) {
                 // read from vic IO
                 return $this->c64->getVic2()->readIo($location);
@@ -255,7 +275,7 @@ class Memory {
             }
         }
 
-        // Fallthrough, read from RAM (happens when bank is IO, but not an IO address
+        // Fallthrough, read from RAM (happens when bank is IO, but not an IO address)
         return $this->ram[$location];
     }
 
@@ -292,7 +312,7 @@ class Memory {
         // Do not use IO when writing directly to RAM
         if ($write_mode == self::WRITE_DIRECT_RAM) {
             $this->ram[$location] = $value;
-            return;
+            return 0;
         }
 
         // A write could be done to either RAM or IO. We need to check banks modes and pass it to
@@ -301,12 +321,12 @@ class Memory {
         if ($location == 0x0001) {
             // Zero page 0001 location: change bank configuration
             $this->setupMemoryBankConfiguration($value);
-            return;
+            return 0;
         }
 
         $zone = $this->getBankZone($location);
 
-        if ($this->bank[$zone] == self::BANKMODE_IO) {
+        if ($this->current_bank_layout[$zone] == self::BANKMODE_IO) {
             if ($location >= 0xD000 && $location <= 0xD3FF) {
                 // Write to vic IO
                 return $this->c64->getVic2()->writeIo($location, $value);

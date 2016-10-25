@@ -89,39 +89,39 @@ class Cia1
         switch (($location - $this->memory_offset) & 0x0F) {
             case 0x00:
                 // Port A data lines
-                // @TODO: Make sure data port A functions
-                $value = 0xFF;
+
+                // @TODO: Read/map joystick 2
+                $joystick2 = 0x1F;              // Not connected
+
+                // @TODO: Paddle switch control?
+                $paddleSwitchControl = 0x3;     // No paddles
+
+                // Lightpen bit overlaps joystick fire button (@TODO: Connect to VIC as well?)
+                $lightpen = 1;
+
+                $value = $joystick2 | ($lightpen << 4) | (1 << 5) | ($paddleSwitchControl << 6);
                 break;
             case 0x01:
                 // Port B data lines
+
+                // Reading will return the bits that are high in the selected ROWS by data_port_a.
+
+                // Also, it will "merge" this with the joystick 1 bits (0-4) AND the timer A and B
+                // bits in (6-7)
+
+                $timerA = 0;    // @TODO: Underflow timer A
+                $timerB = 0;    // @TODO: Underflow timer B
+
+                $joystick1 = 0x0;       // @TODO: add joystick
+
+                // Read selected keyboard rows
+                $keyboard = 0xFF;
                 $matrix = $this->io->readKeyboard();
-
-                // Data port B has two modes: bits for RW and bits for RO. This is based on the data_dir_b entry.
-
-                // Set value for bits set to RW. This is the keyboard matrix
-                $rw_value = 0;
                 if ($matrix[1] & ~$this->data_port_a) {
-                    // Only act on the columns for the data port a, and set the rows taken from data
-                    // port b values (note all are inversed bits (1 = don't read, 0 = read :( )
-                    $rw_value = ($matrix[0] & ~$this->data_port_b);
+                    $keyboard = ~$matrix[0];
                 }
 
-                // Set value for bits set to RO bits (joystick, timers)
-                $ro_value = 0;
-                // @TODO: joystick 1, timerA (bit 6) and timerB (bit 7)
-
-
-                // Mix value with the RW and RO bits
-                $value = 0;
-                $value |= (~$rw_value & 0xFF);
-
-                // @TODO: Make sure only RW bits are set based on data_dir_b ??
-//                $value |= (~$rw_value & 0xFF) & ~($this->data_dir_b);
-                // @TODO Make sure we merge the RO bits as well?
-//                $value |= ($ro_value & $this->data_dir_b);
-
-
-
+                $value = $keyboard;
                 break;
             case 0x02:
                 // Data direction port A
@@ -216,12 +216,19 @@ class Cia1
         // Locations are repeated every 16 bytes
         switch (($location - $this->memory_offset) & 0x0F) {
             case 0x00:
-                // Port A data lines
-                $this->data_port_a = $value;
+                // Port A data lines.
+
+                // We can only "write" to bits set to 1 in data_dir_a
+                $this->data_port_a = ($value & $this->data_dir_a);
                 break;
             case 0x01:
                 // Port B data lines
-                $this->data_port_b = $value;
+
+                // We can only "write" to bits set to 1 in data_dir_b
+                $this->data_port_b = ($value & $this->data_dir_b);
+
+                // Note that on the CIA 1, the data port B inputs are not used. This is why data_port_b
+                // is never used in the rest of this class.
                 break;
             case 0x02:
                 // Data direction port A
