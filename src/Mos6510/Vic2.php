@@ -75,6 +75,14 @@ class Vic2
     // Framebuffer that holds the actual plotted screen colors
     protected $buffer;
 
+    // Precalculated memory offsets
+    protected $screenmem_offset = 0;
+    protected $bitmapmem_offset = 0;
+    protected $charmem_offset = 0;
+
+    protected $cached_vic_bank = -1;        // Holds the current known value of the vic bank from the CIA2.
+
+
     /**
      * @param C64 $c64
      * @param $memory_offset
@@ -277,6 +285,8 @@ class Vic2
                 break;
             case 0x11 :
                 $this->cr1 = $value;
+
+                // Update video modes if needed
                 $this->updateVideoSettings();
                 break;
             case 0x12:
@@ -291,6 +301,8 @@ class Vic2
                 break;
             case 0x16 :
                 $this->cr2 = $value;
+
+                // Update video modes if needed
                 $this->updateVideoSettings();
                 break;
             case 0x17:
@@ -298,6 +310,9 @@ class Vic2
                 break;
             case 0x18:
                 $this->memory_setup = $value;
+
+                // Recalculate memory locations based on the new memory setup
+                $this->updateMemoryLocations();
                 break;
             case 0x19:
                 // Acknowledge the given interrupts
@@ -354,6 +369,12 @@ class Vic2
      * Single VIC cycle
      */
     public function cycle() {
+        // When the CIA2 has changed the VIC banks, we need to update the memory locations as well.
+        if ($this->cached_vic_bank != $this->cia2->getVicBank() ) {
+            $this->updateMemoryLocations();
+            $this->cached_vic_bank = $this->cia2->getVicBank();
+        }
+
         // Are there still unacknowledged interrupts pending?
         if (Utils::bit_test($this->interrupt_status, 7)) {
             // Trigger IRQ when enabled
@@ -443,6 +464,30 @@ class Vic2
         $this->logger->debug(sprintf("Setting VIC2 graphics mode to %02X\n", $this->graphics_mode));
     }
 
+    protected function updateMemoryLocations() {
+        $bank_offset = $this->cia2->getVicBank() * 0x4000;
+
+        // Screen memory
+        $this->screenmem_offset = ($this->memory_setup >> 4) & 0x0F;
+        $this->screenmem_offset *= 0x400;
+        $this->screenmem_offset += $bank_offset;
+
+        // Bitmap
+        $this->bitmapmem_offset = ($this->memory_setup >> 3) & 0x01;
+        $this->bitmapmem_offset *= 0x2000;
+        $this->bitmapmem_offset += $bank_offset;
+
+        // Character ROM/RAM
+        $this->charmem_offset = ($this->memory_setup >> 1) & 0x07;
+        $this->charmem_offset *= 0x800;
+        $this->charmem_offset += $bank_offset;
+
+        $this->logger->debug(sprintf("Updating VIC2 video offsets:\n"));
+        $this->logger->debug(sprintf("  Screen offset: %04X\n", $this->screenmem_offset));
+        $this->logger->debug(sprintf("  Bitmap offset: %04X\n", $this->bitmapmem_offset));
+        $this->logger->debug(sprintf("  Char   offset: %04X\n", $this->charmem_offset));
+    }
+
     /**
      * Returns the actual color of the given X Y coordinate from the screen (excluding border, only 320x200)
      *
@@ -500,56 +545,11 @@ class Vic2
         return ($c & 0x0F);
     }
 
-    /**
-     * Returns offset of the currently configured screen memory
-     *
-     * @return int
-     */
-    protected function getScreenMemoryOffset() {
-        $bank_offset = (3 - $this->cia2->getVicBank()) * 0x4000;
-
-        // This is where the memory of the screen resides
-        $screenmem_offset = ($this->memory_setup >> 4) & 0x0F;
-        $screenmem_offset *= 0x400;
-        $screenmem_offset += $bank_offset;
-
-        return $screenmem_offset;
-    }
-
-    /**
-     * Returns offset of the currently configured bitmap memory
-     *
-     * @return int
-     */
-    protected function getBitmapMemoryOffset() {
-        $bank_offset = (3 - $this->cia2->getVicBank()) * 0x4000;
-
-        $bitmapmem_offset = ($this->memory_setup >> 3) & 0x01;
-        $bitmapmem_offset *= 0x2000;
-        $bitmapmem_offset += $bank_offset;
-
-        return $bitmapmem_offset;
-    }
-
-    /**
-     * Returns offset of the currently configured character memory
-     * @return int
-     */
-    protected function getCharMemoryOffset() {
-        $bank_offset = (3 - $this->cia2->getVicBank()) * 0x4000;
-
-        $charmem_offset = ($this->memory_setup >> 1) & 0x07;
-        $charmem_offset *= 0x800;
-        $charmem_offset += $bank_offset;
-
-        return $charmem_offset;
-    }
-
     protected function getSpriteShapeOffset($sprite_idx) {
-        $bank_offset = (3 - $this->cia2->getVicBank()) * 0x4000;
+        $bank_offset = $this->cia2->getVicBank() * 0x4000;
 
         // Fetch the "index" of the sprite spape (0-255)
-        $location = $this->getScreenMemoryOffset() + self::SPRITE_VECTOR_OFFSET + $sprite_idx;
+        $location = $this->screenmem_offset + self::SPRITE_VECTOR_OFFSET + $sprite_idx;
         $index = $this->memory->read8($location);
 
         return $bank_offset + ($index * 64);
@@ -575,23 +575,25 @@ class Vic2
      */
     protected function readCharBitmapLine($petscii_code, $line) {
         // Find the location of the start of the character in the character memory
-        $location = $this->getCharMemoryOffset() + ($petscii_code * 8) + ($line % 8);
+        $location = $this->charmem_offset + ($petscii_code * 8) + ($line % 8);
 
-        // This is tricky: 0x1000-0x1FFFF and 0x9000-0x9FFF are actually hardwired by
+        // This is tricky: 0x1000-0x1FFF and 0x9000-0x9FFF are actually hardwired by
         // the VIC to read from (Character) ROM instead of RAM
 
+//        printf("Location: %04X\n", $location);
         $readFromRom = false;
         if ($location >= 0x1000 and $location <= 0x1FFF) {
             $readFromRom = true;
+            $location -= 0x1000;
         }
-        if ($location >= 0x9000 and $location <= 0x9FFF) {
+        if ($location >= 0x5000 and $location <= 0x5FFF) {
             $readFromRom = true;
+            $location -= 0x5000;
         }
 
         if ($readFromRom) {
             // ROM starts at 0xD000 (actually read from $this->memory_offset)
-            $o = ($location % 0x7FFF) - 0x1000;
-            $bitmap_line = $this->memory->read8rom($this->memory_offset + $o);
+            $bitmap_line = $this->memory->read8rom($this->memory_offset + $location);
         } else {
             // Everything else we can simply retrieve directly from RAM
             $bitmap_line = $this->memory->read8ram($location);
@@ -632,6 +634,7 @@ class Vic2
      * @param $x
      * @param $y
      * @param $color
+     * @return array|mixed
      */
     protected function handleSprite($sprite_idx, $x, $y, $color) {
         // Fetch location of the sprite
@@ -713,7 +716,7 @@ class Vic2
         $char_index = floor($y / 8) * 40 + floor($x / 8);
 
         // Read the given character from the screen memory
-        $char = $this->memory->read8($this->getScreenMemoryOffset() + $char_index);
+        $char = $this->memory->read8($this->screenmem_offset + $char_index);
 
         // Find the start of the matching bitmap inside the character ROM
         $char_bitmap_line = $this->readCharBitmapLine($char, ($y % 8));
@@ -753,7 +756,7 @@ class Vic2
         }
 
         // Read the given character from the screen memory
-        $char = $this->memory->read8($this->getScreenMemoryOffset() + $char_index);
+        $char = $this->memory->read8($this->screenmem_offset + $char_index);
 
         // Find the start of the matching bitmap inside the character ROM
         $char_bitmap_line = $this->readCharBitmapLine($char, ($y % 8));
@@ -793,7 +796,7 @@ class Vic2
         $char_index = floor($y / 8) * 40 + floor($x / 8);
 
         // Read the given character from the screen memory
-        $char = $this->memory->read8($this->getScreenMemoryOffset() + $char_index);
+        $char = $this->memory->read8($this->screenmem_offset + $char_index);
 
         // Find the start of the matching bitmap inside the character ROM. Only the first 64 chars are available!
         $char_bitmap_line = $this->readCharBitmapLine(($char & 0x3F), ($y % 8));
