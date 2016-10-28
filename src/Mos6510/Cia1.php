@@ -119,7 +119,7 @@ class Cia1
                 // Read selected keyboard rows
                 $keyboard = 0xFF;
                 $matrix = $this->io->readKeyboard();
-                if ($matrix[1] & ~$this->data_port_a) {
+                if ($matrix[1] & ~$this->getDataPortAValue()) {
                     $keyboard = ~$matrix[0];
                 }
 
@@ -213,24 +213,21 @@ class Cia1
     }
 
 
+    /**
+     * @param $location
+     * @param $value
+     */
     public function writeIo($location, $value)
     {
         // Locations are repeated every 16 bytes
         switch (($location - $this->memory_offset) & 0x0F) {
             case 0x00:
                 // Port A data lines.
-
-                // We can only "write" to bits set to 1 in data_dir_a
-                $this->data_port_a = ($value & $this->data_dir_a);
+                $this->data_port_a = $value;
                 break;
             case 0x01:
                 // Port B data lines
-
-                // We can only "write" to bits set to 1 in data_dir_b
-                $this->data_port_b = ($value & $this->data_dir_b);
-
-                // Note that on the CIA 1, the data port B inputs are not used. This is why data_port_b
-                // is never used in the rest of this class.
+                $this->data_port_b = $value;
                 break;
             case 0x02:
                 // Data direction port A
@@ -468,4 +465,11 @@ class Cia1
         }
     }
 
+    protected function getDataPortAValue() {
+        return $this->data_port_a | (255 - $this->data_dir_a);
+    }
+
+    protected function getDataPortBValue() {
+        return $this->data_port_b | (255 - $this->data_dir_b);
+    }
 }

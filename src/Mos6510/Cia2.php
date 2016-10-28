@@ -21,12 +21,14 @@ class Cia2 extends Cia1
         switch (($location - $this->memory_offset) & 0x0F) {
             case 0:
                 // Port A data lines
+                return $this->getDataPortAValue();
                 break;
             case 1:
                 // Port B data lines
+                return $this->getDataPortBValue();
                 break;
             case 13:
-                // Data direction port A
+                //
                 break;
             default:
                 // Other locations are just like CIA1
@@ -37,18 +39,22 @@ class Cia2 extends Cia1
         return $value;
     }
 
+    /**
+     * Returns the actual VIC bank (one of the four 16KB blocks of RAM that the VIC can see at the same time).
+     *
+     * @return int
+     */
     public function getVicBank() {
-        return ($this->data_port_a & 0x02);
+        return 3 - ($this->getDataPortAValue() & 0x03);
     }
 
+    /**
+     * @param $location
+     * @param $value
+     */
     public function writeIo($location, $value) {
         // Locations are repeated every 16 bytes
         switch (($location - $this->memory_offset) & 0x0F) {
-            case 0:
-                $this->data_port_a = $value;
-                break;
-            case 1:
-                break;
             case 13:
                 break;
             default:
