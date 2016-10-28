@@ -364,7 +364,7 @@ class Vic2
         }
 
         // Iterate 8 times (so we get 8 VIC cycles on each cycle)
-        for ($i=0; $i!=8; $i++) {
+        for ($i=0; $i!=1; $i++) {
 
             // X / Y coordinates are starting from the top left HBLANK (404x312)
             $x = $this->raster_beam % 404;
@@ -506,7 +506,7 @@ class Vic2
      * @return int
      */
     protected function getScreenMemoryOffset() {
-        $bank_offset = $this->cia2->getVicBank() * 0x4000;
+        $bank_offset = (3 - $this->cia2->getVicBank()) * 0x4000;
 
         // This is where the memory of the screen resides
         $screenmem_offset = ($this->memory_setup >> 4) & 0x0F;
@@ -522,7 +522,7 @@ class Vic2
      * @return int
      */
     protected function getBitmapMemoryOffset() {
-        $bank_offset = $this->cia2->getVicBank() * 0x4000;
+        $bank_offset = (3 - $this->cia2->getVicBank()) * 0x4000;
 
         $bitmapmem_offset = ($this->memory_setup >> 3) & 0x01;
         $bitmapmem_offset *= 0x2000;
@@ -536,7 +536,7 @@ class Vic2
      * @return int
      */
     protected function getCharMemoryOffset() {
-        $bank_offset = $this->cia2->getVicBank() * 0x4000;
+        $bank_offset = (3 - $this->cia2->getVicBank()) * 0x4000;
 
         $charmem_offset = ($this->memory_setup >> 1) & 0x07;
         $charmem_offset *= 0x800;
@@ -546,7 +546,7 @@ class Vic2
     }
 
     protected function getSpriteShapeOffset($sprite_idx) {
-        $bank_offset = $this->cia2->getVicBank() * 0x4000;
+        $bank_offset = (3 - $this->cia2->getVicBank()) * 0x4000;
 
         // Fetch the "index" of the sprite spape (0-255)
         $location = $this->getScreenMemoryOffset() + self::SPRITE_VECTOR_OFFSET + $sprite_idx;
@@ -578,7 +578,7 @@ class Vic2
         $location = $this->getCharMemoryOffset() + ($petscii_code * 8) + ($line % 8);
 
         // This is tricky: 0x1000-0x1FFFF and 0x9000-0x9FFF are actually hardwired by
-        // the VIC to read from ROM instead of RAM
+        // the VIC to read from (Character) ROM instead of RAM
 
         $readFromRom = false;
         if ($location >= 0x1000 and $location <= 0x1FFF) {
@@ -590,7 +590,7 @@ class Vic2
 
         if ($readFromRom) {
             // ROM starts at 0xD000 (actually read from $this->memory_offset)
-            $o = (($location % 0x7FFF) - 0x1000);
+            $o = ($location % 0x7FFF) - 0x1000;
             $bitmap_line = $this->memory->read8rom($this->memory_offset + $o);
         } else {
             // Everything else we can simply retrieve directly from RAM
