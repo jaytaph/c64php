@@ -90,8 +90,9 @@ class Cia1
             case 0x00:
                 // Port A data lines
 
-                // @TODO: Read/map joystick 2
-                $joystick2 = 0x1F;              // Not connected
+                // Read/map joystick 2
+                $joystick2 = $this->io->readJoystick2();
+                $joystick2 = 255 - $joystick2;
 
                 // @TODO: Paddle switch control?
                 $paddleSwitchControl = 0x3;     // No paddles
@@ -113,6 +114,7 @@ class Cia1
                 $timerB = 0;    // @TODO: Underflow timer B
 
                 $joystick1 = 0x0;       // @TODO: add joystick
+
 
                 // Read selected keyboard rows
                 $keyboard = 0xFF;

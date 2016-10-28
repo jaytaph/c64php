@@ -13,6 +13,8 @@ will do for now...
 # Zero out all keys
 keyboard_row_bits = np.zeros(8, dtype='uint8')
 keyboard_col_bits = np.zeros(8, dtype='uint8')
+joystick1_bits = np.zeros(8, dtype='uint8')
+joystick2_bits = np.zeros(8, dtype='uint8')
 
 def swaprgb(c):
     """
@@ -20,6 +22,22 @@ def swaprgb(c):
     """
     s = c[0:2] + c[6:8] + c[4:6] + c[2:4]
     return s
+
+def write_joystick(event,key):
+    global joystick2_bits
+
+    for bit,jk_key in enumerate(joystick2_keys):
+        if jk_key == key:
+            if event == pygame.KEYDOWN:
+                joystick2_bits[bit] = 1
+            else:
+                joystick2_bits[bit] = 0
+
+        print joystick2_bits
+        packed_joystick = np.packbits(joystick2_bits)
+        print packed_joystick
+        smh.write(packed_joystick[0], 117384 + 3)
+
 
 
 def write_key(event, key):
@@ -69,7 +87,8 @@ def update_screen():
 
         pygame.display.flip()
 
-
+# Joysticks (index is bit number)
+joystick2_keys = [ 0, 0, 0, pygame.K_KP0, pygame.K_KP2, pygame.K_KP8, pygame.K_KP6, pygame.K_KP4 ];
 
 # Keyboard mapping from pygame keys to C64 keys
 keyboard_matrix = [
@@ -80,7 +99,7 @@ keyboard_matrix = [
     [ pygame.K_v,      pygame.K_u,      pygame.K_h,      pygame.K_b,      pygame.K_8,     pygame.K_g,         pygame.K_y,         pygame.K_7, ],
     [ pygame.K_x,      pygame.K_t,      pygame.K_f,      pygame.K_c,      pygame.K_6,     pygame.K_d,         pygame.K_r,         pygame.K_5, ],
     [ pygame.K_LSHIFT, pygame.K_e,      pygame.K_s,      pygame.K_z,      pygame.K_4,     pygame.K_a,         pygame.K_w,         pygame.K_3, ],
-    [ pygame.K_DOWN,   pygame.K_F5,     pygame.K_F3,     pygame.K_F1,     pygame.K_F7,    pygame.K_RALT,      pygame.K_RETURN,    pygame.K_DELETE, ],
+    [ pygame.K_DOWN,   pygame.K_F5,     pygame.K_F3,     pygame.K_F1,     pygame.K_F7,    pygame.K_RIGHT,     pygame.K_RETURN,    pygame.K_DELETE, ],
 ]
 
 # Defined C64 colors
@@ -107,7 +126,7 @@ c64colors = [
 
 if __name__ == "__main__":
     # SHM key as used in the ShmIo class
-    SHM_KEY = 0x6303b5eb
+    SHM_KEY = 0x6303b5ec
 
     # Open up SHM.
     smh = sysv_ipc.SharedMemory(SHM_KEY)
@@ -122,7 +141,10 @@ if __name__ == "__main__":
     while True:
         for event in pygame.event.get():
             if event.type == pygame.KEYDOWN or event.type == pygame.KEYUP:
-                write_key(event.type, event.key)
+                if event.key in joystick2_keys:
+                    write_joystick(event.type, event.key)
+                else:
+                    write_key(event.type, event.key)
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()

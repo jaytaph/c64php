@@ -27,5 +27,15 @@ interface IoInterface {
      */
     public function readKeyboard();
 
+    /**
+     * @return int single byte of joystick 1
+     */
+    public function readJoystick1();
+
+    /**
+     * @return int single byte of joystick 2
+     */
+    public function readJoystick2();
+
     public function enableOutput($output);
 }

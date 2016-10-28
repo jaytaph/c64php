@@ -16,4 +16,11 @@ class NullIo implements IoInterface {
     public function enableOutput($output) {
     }
 
+    public function readJoystick1() {
+    }
+
+    public function readJoystick2() {
+    }
+
+
 }

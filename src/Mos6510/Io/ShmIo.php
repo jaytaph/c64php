@@ -4,10 +4,10 @@ namespace Mos6510\Io;
 
 class ShmIo implements IoInterface {
 
-    const SHM_KEY = 0x6303b5eb;
+    const SHM_KEY = 0x6303b5ec;
     protected $shm_id;
 
-    const BUFFER_SIZE = 117384 + 2;
+    const BUFFER_SIZE = 117384 + 2 + 2;
 
     protected $output_enabled;
 
@@ -21,6 +21,9 @@ class ShmIo implements IoInterface {
 
         // Initial clear of the keyboard
         shmop_write($this->shm_id, str_repeat(chr(0), 2), 117384);
+
+        // Initial clear of the joysticks
+        shmop_write($this->shm_id, str_repeat(chr(0), 2), 117384 + 2);
     }
 
     public function writeMonitorBuffer($buf) {
@@ -79,6 +82,21 @@ class ShmIo implements IoInterface {
         }
 
         return $buf;
+    }
+
+    public function readJoystick1()
+    {
+        $buf = shmop_read($this->shm_id, 117384 + 2, 1);
+
+        return ord($buf[0]);
+    }
+
+    public function readJoystick2()
+    {
+        $buf = shmop_read($this->shm_id, 117384 + 3, 1);
+
+        return ord($buf[0]);
+
     }
 
 
