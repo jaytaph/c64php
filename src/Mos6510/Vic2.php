@@ -75,10 +75,6 @@ class Vic2
     // Framebuffer that holds the actual plotted screen colors
     protected $buffer;
 
-    // Time in microseconds when a raster is started (used for timing / debug purposes)
-    protected $raster_start = 0;
-
-
     /**
      * @param C64 $c64
      * @param $memory_offset
@@ -414,10 +410,6 @@ class Vic2
 
                 // Should this also be reset here?
                 $this->raster_line = 0;
-
-                $diff = microtime(true) - $this->raster_start;
-//                print "Raster done within $diff \n";
-                $this->raster_start = microtime(true);
             }
         }
 

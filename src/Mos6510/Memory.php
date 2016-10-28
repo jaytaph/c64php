@@ -36,10 +36,10 @@ class Memory {
     const WRITE_WITH_IO = true;                // When we need to read/write memory or IO, depending on the bank configuration (default)
 
     /* Complete memory map for RAM */
-    protected $ram = array();
+    protected $ram = null;
 
     /* Complete memory map for ROM, note that not all the memory is mapped in this ROM */
-    protected $rom = array();
+    protected $rom = null;
 
     /* Current bank layout (copied from the preset_banks) */
     protected $current_bank_layout = array();
