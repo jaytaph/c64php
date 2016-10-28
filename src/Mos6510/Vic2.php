@@ -151,12 +151,14 @@ class Vic2
                 break;
             case 0x16:
                 $value = $this->cr2;
+                $value |= 0xD0;             // Unused bits
                 break;
             case 0x17:
                 $value = $this->sprite_double_height;
                 break;
             case 0x18:
                 $value = $this->memory_setup;
+                $value |= 0x01;             // Unused bits
                 break;
             case 0x19:
                 $value = $this->interrupt_status;
@@ -168,6 +170,7 @@ class Vic2
                 break;
             case 0x1A:
                 $value = $this->interrupt_control;
+                $value |= 0x70; // These bits are always set to 1 (unused though)
                 break;
             case 0x1B:
                 $value = $this->sprite_priority;
@@ -180,22 +183,31 @@ class Vic2
                 break;
             case 0x1E:
                 $value = $this->sprite_collision_sprite;
+
+                // Automatically clear after read
+                $this->sprite_collision_sprite = 0;
                 break;
             case 0x1F:
                 $value = $this->sprite_collision_background;
+
+                // Automatically clear after read
+                $this->sprite_collision_background = 0;
                 break;
             case 0x20:
                 $value = $this->border_color;
+                $value |= 0xF0; // Unused bits
                 break;
             case 0x21:
             case 0x22:
             case 0x23:
             case 0x24:
                 $value = $this->background_color[$address - 0x21];
+                $value |= 0xF0; // Unused bits
                 break;
             case 0x25:
             case 0x26:
                 $value = $this->sprite_extra_color[$address - 0x25];
+                $value |= 0xF0; // Unused bits
                 break;
             case 0x27:
             case 0x28:
@@ -207,10 +219,11 @@ class Vic2
             case 0x2E:
                 $sprite_offset = ($address - 0x27);
                 $value = $this->sprite_colors[$sprite_offset];
+                $value |= 0xF0; // Unused bits
                 break;
             default:
                 // Unused
-                $value = 0;
+                $value = 0xFF;
                 break;
         }
         return $value;
@@ -303,10 +316,10 @@ class Vic2
                 $this->sprite_double_width = $value;
                 break;
             case 0x1E:
-                // @TODO: Are these to write?
+                // Unable to write to this register
                 break;
             case 0x1F:
-                // @TODO: Are these to write?
+                // Unable to write to this register
                 break;
             case 0x20:
                 $this->border_color = ($value & 0x0F);
@@ -399,7 +412,6 @@ class Vic2
                 $this->cpu->triggerIrq();
                 return;
             }
-
 
             // Reset raster beam when we reached end of screen
             if ($this->raster_beam >= (404 * 312)) {
