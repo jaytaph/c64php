@@ -640,9 +640,12 @@ class Vic2
         $x_coord = $this->sprite_x[$sprite_idx];
         $y_coord = $this->sprite_y[$sprite_idx];
 
-        // @TODO: Double width / height
-        $size_x = 24;
-        $size_y = 21;
+        $double_width = Utils::bit_test($this->sprite_double_width, $sprite_idx);
+        $double_height = Utils::bit_test($this->sprite_double_height, $sprite_idx);
+
+        $size_x = $double_width ? 48 : 24;
+        $size_y = $double_height ? 42 : 21;
+
 
         if ($x >= $x_coord && $x < ($x_coord + $size_x) &&
             $y >= $y_coord && $y < ($y_coord + $size_y)) {
@@ -650,6 +653,13 @@ class Vic2
 
             $x_off = ($x - $x_coord);
             $y_off = ($y - $y_coord);
+
+            if ($double_width) {
+                $x_off >>= 1;
+            }
+            if ($double_height) {
+                $y_off >>= 1;
+            }
 
             $offset = ($y_off * 24) + $x_off;
 
