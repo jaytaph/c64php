@@ -661,6 +661,12 @@ class Vic2
 
             // X Y falls into the coords of the current sprite
 
+            // Sprite is written BEHIND the background, so we do not care about writing of the sprite
+            if ($this->sprite_priority[$sprite_idx] == false && $color != $this->background_color[0]) {
+                return $color;
+            }
+
+
             $x_off = ($x - $x_coord);
             $y_off = ($y - $y_coord);
 
