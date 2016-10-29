@@ -67,6 +67,12 @@ class Utils {
         return Utils::bit_test($value, $bit_position) ? 1 : 0;
     }
 
+    /**
+     * Packs a numerical array of true/false into bits (index 0 = bit 0 etc)
+     *
+     * @param array $bits
+     * @return int
+     */
     static function pack_bits(array $bits) {
         $result = 0;
         foreach ($bits as $idx => $bit) {
@@ -76,6 +82,12 @@ class Utils {
         return $result;
     }
 
+    /**
+     * Unpacks a 8-bit integer into 8 seperate boolean values
+     *
+     * @param $value
+     * @return mixed
+     */
     static function unpack_bits($value) {
         $result = array(false, false, false, false, false, false, false, false);
         for ($i=0; $i!=8; $i++) {

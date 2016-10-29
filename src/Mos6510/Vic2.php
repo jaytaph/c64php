@@ -38,10 +38,11 @@ class Vic2
     protected $cr1;         // Screen control register 1
     protected $cr2;         // Screen control register 2
 
+    // At which pixel are we currently drawing onto the monitor? Includes HBLANK and VBLANK regions as well
+    protected $raster_beam = 0;
+
     protected $raster_line = 0;                 // Current raster line we are rendering
     protected $raster_line_interrupt = 0;       // Trigger interrupt on this raster line (if enabled)
-
-    protected $sprite_enable = array(false, false, false, false, false, false, false, false);
 
     protected $memory_setup = 0;
 
@@ -54,6 +55,7 @@ class Vic2
     protected $sprite_x = array(0, 0, 0, 0, 0, 0, 0, 0);
     // Sprite Y offsets (uses 8 bits for 0-200)
     protected $sprite_y = array(0, 0, 0, 0, 0, 0, 0, 0);
+    protected $sprite_enabled = array(false, false, false, false, false, false, false, false);
     protected $sprite_priority = array(false, false, false, false, false, false, false, false);
     protected $sprite_multicolor = array(false, false, false, false, false, false, false, false);
     protected $sprite_double_width = array(false, false, false, false, false, false, false, false);
@@ -68,9 +70,6 @@ class Vic2
 
     protected $graphics_mode = 0;           // Actual screen mode (0-7)
     protected $screen_enabled = 0;          // Screen is enabled
-
-    // At which pixel are we currently drawing onto the monitor? (0 - 157248). Includes HBLANK and VLANK regions as well
-    protected $raster_beam = 0;
 
     // Framebuffer that holds the actual plotted screen colors
     protected $buffer;
@@ -155,7 +154,7 @@ class Vic2
                 $value = 0;
                 break;
             case 0x15:
-                $value = Utils::pack_bits($this->sprite_enable);
+                $value = Utils::pack_bits($this->sprite_enabled);
                 break;
             case 0x16:
                 $value = $this->cr2;
@@ -297,7 +296,7 @@ class Vic2
                 // Read only addresses for light pen
                 break;
             case 0x15:
-                $this->sprite_enable = Utils::unpack_bits($value);
+                $this->sprite_enabled = Utils::unpack_bits($value);
                 break;
             case 0x16 :
                 $this->cr2 = $value;
@@ -322,7 +321,6 @@ class Vic2
                 $this->interrupt_control = $value;
                 break;
             case 0x1B:
-                $value = 85;
                 $this->sprite_priority = Utils::unpack_bits($value);
                 break;
             case 0x1C:
@@ -626,7 +624,7 @@ class Vic2
         // We start painting sprite 7 first, up to sprite 0, which has the highest priority
         for ($i = 7; $i >= 0; $i--) {
             // Only handle sprite when it's enabled
-            if ($this->sprite_enable[$i]) {
+            if ($this->sprite_enabled[$i]) {
                 $color = $this->handleSprite($i, $x, $y, $color);
             }
         }
@@ -665,7 +663,6 @@ class Vic2
             if ($this->sprite_priority[$sprite_idx] == false && $color != $this->background_color[0]) {
                 return $color;
             }
-
 
             $x_off = ($x - $x_coord);
             $y_off = ($y - $y_coord);
