@@ -67,4 +67,22 @@ class Utils {
         return Utils::bit_test($value, $bit_position) ? 1 : 0;
     }
 
+    static function pack_bits(array $bits) {
+        $result = 0;
+        foreach ($bits as $idx => $bit) {
+            $result |= (($bit ? 1 : 0) << $idx);
+        }
+
+        return $result;
+    }
+
+    static function unpack_bits($value) {
+        $result = array(false, false, false, false, false, false, false, false);
+        for ($i=0; $i!=8; $i++) {
+            $result[$i] = Utils::bit_test($value, $i);
+        }
+
+        return $result;
+    }
+
 }

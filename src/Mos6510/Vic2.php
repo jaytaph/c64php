@@ -41,7 +41,7 @@ class Vic2
     protected $raster_line = 0;                 // Current raster line we are rendering
     protected $raster_line_interrupt = 0;       // Trigger interrupt on this raster line (if enabled)
 
-    protected $sprite_enable = 0;
+    protected $sprite_enable = array(false, false, false, false, false, false, false, false);
 
     protected $memory_setup = 0;
 
@@ -54,10 +54,10 @@ class Vic2
     protected $sprite_x = array(0, 0, 0, 0, 0, 0, 0, 0);
     // Sprite Y offsets (uses 8 bits for 0-200)
     protected $sprite_y = array(0, 0, 0, 0, 0, 0, 0, 0);
-    protected $sprite_priority = 0;
-    protected $sprite_multicolor = 0;
-    protected $sprite_double_width = 0;
-    protected $sprite_double_height = 0;
+    protected $sprite_priority = array(false, false, false, false, false, false, false, false);
+    protected $sprite_multicolor = array(false, false, false, false, false, false, false, false);
+    protected $sprite_double_width = array(false, false, false, false, false, false, false, false);
+    protected $sprite_double_height = array(false, false, false, false, false, false, false, false);
     protected $sprite_collision_sprite = 0;                         // Sprites collides with other sprites
     protected $sprite_collision_background = 0;                     // Sprites collides with background
     protected $sprite_extra_color = array(0, 0);                    // Two extra colors for multicolor sprites
@@ -155,14 +155,14 @@ class Vic2
                 $value = 0;
                 break;
             case 0x15:
-                $value = $this->sprite_enable;
+                $value = Utils::pack_bits($this->sprite_enable);
                 break;
             case 0x16:
                 $value = $this->cr2;
                 $value |= 0xD0;             // Unused bits
                 break;
             case 0x17:
-                $value = $this->sprite_double_height;
+                $value = Utils::pack_bits($this->sprite_double_height);
                 break;
             case 0x18:
                 $value = $this->memory_setup;
@@ -181,13 +181,13 @@ class Vic2
                 $value |= 0x70; // These bits are always set to 1 (unused though)
                 break;
             case 0x1B:
-                $value = $this->sprite_priority;
+                $value = Utils::pack_bits($this->sprite_priority);
                 break;
             case 0x1C:
-                $value = $this->sprite_multicolor;
+                $value = Utils::pack_bits($this->sprite_multicolor);
                 break;
             case 0x1D:
-                $value = $this->sprite_double_width;
+                $value = Utils::pack_bits($this->sprite_double_width);
                 break;
             case 0x1E:
                 $value = $this->sprite_collision_sprite;
@@ -247,7 +247,7 @@ class Vic2
         $address = $location - $this->memory_offset;
         $address %= 0x40; // Make sure we always use 0xD000-0xD03F. Vic2 repeats every 0x40 bytes
 
-        $this->logger->debug(sprintf("VIC2: Writing %02X to %04X\n", $value, $location));
+        $this->logger->debug(sprintf("VIC2: [W] Port %04X: %02X\n", $location, $value));
 
         switch ($address) {
             case 0x00 :
@@ -297,7 +297,7 @@ class Vic2
                 // Read only addresses for light pen
                 break;
             case 0x15:
-                $this->sprite_enable = $value;
+                $this->sprite_enable = Utils::unpack_bits($value);
                 break;
             case 0x16 :
                 $this->cr2 = $value;
@@ -306,7 +306,7 @@ class Vic2
                 $this->updateVideoSettings();
                 break;
             case 0x17:
-                $this->sprite_double_height = $value;
+                $this->sprite_double_height = Utils::unpack_bits($value);
                 break;
             case 0x18:
                 $this->memory_setup = $value;
@@ -322,13 +322,14 @@ class Vic2
                 $this->interrupt_control = $value;
                 break;
             case 0x1B:
-                $this->sprite_priority = $value;
+                $value = 85;
+                $this->sprite_priority = Utils::unpack_bits($value);
                 break;
             case 0x1C:
-                $this->sprite_multicolor = $value;
+                $this->sprite_multicolor = Utils::unpack_bits($value);
                 break;
             case 0x1D:
-                $this->sprite_double_width = $value;
+                $this->sprite_double_width = Utils::unpack_bits($value);
                 break;
             case 0x1E:
                 // Unable to write to this register
@@ -385,20 +386,20 @@ class Vic2
         }
 
         // Iterate 8 times (so we get 8 VIC cycles on each cycle)
-        for ($i=0; $i!=1; $i++) {
+        for ($i=0; $i!=4; $i++) {
 
             // X / Y coordinates are starting from the top left HBLANK (404x312)
             $x = $this->raster_beam % 404;
             $y = ($this->raster_beam - $x) / 404;
 
             // Check if X and Y are in non-blank region
-            if ($x >= 2 && $y >= 7 && $y < 7 + 43 + 200 + 49) {
+            if ($x >= 2 && $y >= 7 && $y < 299) {
 
                 // X / Y coordinates are now starting from the top left border (402x292)
                 $x -= 2;
                 $y -= 7;
 
-                if (($x >= 46 && $x < 46 + 320 && $y > 43 && $y < 43 + 200) && $this->screen_enabled) {
+                if (($x >= 46 && $x < 366 && $y > 43 && $y < 243) && $this->screen_enabled) {
 
                     // Set current raster line
                     $this->raster_line = $y - 43;
@@ -411,9 +412,7 @@ class Vic2
                 }
 
                 // Check sprites and change pixel color if overlapped by any sprite(s)
-                if ($this->sprite_enable > 0) {
-                    $p = $this->handleSprites($x - 20, $y + 7, $p);
-                }
+                $p = $this->handleSprites($x - 20, $y + 7, $p);
 
                 // Write pixel to buffer
                 $this->buffer[$y * 402 + $x] = chr($p);
@@ -464,6 +463,9 @@ class Vic2
         $this->logger->debug(sprintf("Setting VIC2 graphics mode to %02X\n", $this->graphics_mode));
     }
 
+    /**
+     * Updates memory locations based on the memory setup register and cia2's VIC bank
+     */
     protected function updateMemoryLocations() {
         $bank_offset = $this->cia2->getVicBank() * 0x4000;
 
@@ -545,13 +547,18 @@ class Vic2
         return ($c & 0x0F);
     }
 
+    /**
+     * Find the offset of the given sprite
+     *
+     * @param $sprite_idx
+     * @return int
+     */
     protected function getSpriteShapeOffset($sprite_idx) {
-        $bank_offset = $this->cia2->getVicBank() * 0x4000;
-
-        // Fetch the "index" of the sprite spape (0-255)
+        // Fetch the "index" of the sprite shape. This means sprites are bound to blocks fo 255 * 64bytes
         $location = $this->screenmem_offset + self::SPRITE_VECTOR_OFFSET + $sprite_idx;
         $index = $this->memory->read8($location);
 
+        $bank_offset = $this->cia2->getVicBank() * 0x4000;
         return $bank_offset + ($index * 64);
     }
 
@@ -586,9 +593,9 @@ class Vic2
             $readFromRom = true;
             $location -= 0x1000;
         }
-        if ($location >= 0x5000 and $location <= 0x5FFF) {
+        if ($location >= 0x9000 and $location <= 0x9FFF) {
             $readFromRom = true;
-            $location -= 0x5000;
+            $location -= 0x9000;
         }
 
         if ($readFromRom) {
@@ -613,13 +620,13 @@ class Vic2
      */
     protected function handleSprites($x, $y, $default_color)
     {
-        // Assume default / transparant color
+        // Assume default / transparent color
         $color = $default_color;
 
         // We start painting sprite 7 first, up to sprite 0, which has the highest priority
         for ($i = 7; $i >= 0; $i--) {
             // Only handle sprite when it's enabled
-            if (Utils::bit_test($this->sprite_enable, $i)) {
+            if ($this->sprite_enable[$i]) {
                 $color = $this->handleSprite($i, $x, $y, $color);
             }
         }
@@ -643,15 +650,15 @@ class Vic2
         $x_coord = $this->sprite_x[$sprite_idx];
         $y_coord = $this->sprite_y[$sprite_idx];
 
-        $double_width = Utils::bit_test($this->sprite_double_width, $sprite_idx);
-        $double_height = Utils::bit_test($this->sprite_double_height, $sprite_idx);
+        $double_width = $this->sprite_double_width[$sprite_idx];
+        $double_height = $this->sprite_double_height[$sprite_idx];
 
         $size_x = $double_width ? 48 : 24;
         $size_y = $double_height ? 42 : 21;
 
-
         if ($x >= $x_coord && $x < ($x_coord + $size_x) &&
             $y >= $y_coord && $y < ($y_coord + $size_y)) {
+
             // X Y falls into the coords of the current sprite
 
             $x_off = ($x - $x_coord);
@@ -671,7 +678,7 @@ class Vic2
 
             $value = $this->memory->read8($location + $byte_offset);
 
-            if (Utils::bit_test($this->sprite_multicolor, $sprite_idx)) {
+            if ($this->sprite_multicolor[$sprite_idx]) {
                 // Multicolor sprite
                 $bit_offset >>= 1;
                 $bit_offset *= 2;
