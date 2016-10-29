@@ -81,6 +81,9 @@ class Vic2
 
     protected $cached_vic_bank = -1;        // Holds the current known value of the vic bank from the CIA2.
 
+    // Per raster-scan cache. This CAN fail if things like address, characters change inside a single raster scan
+    protected $cache;
+
 
     /**
      * @param C64 $c64
@@ -364,6 +367,8 @@ class Vic2
         }
     }
 
+    protected $t1 = 0;
+
     /**
      * Single VIC cycle
      */
@@ -375,7 +380,7 @@ class Vic2
         }
 
         // Are there still unacknowledged interrupts pending?
-        if (Utils::bit_test($this->interrupt_status, 7)) {
+        if ($this->interrupt_status & 0x80) {
             // Trigger IRQ when enabled
             if (! $this->cpu->flagIsSet(Cpu::P_FLAG_IRQ_DISABLE)) {
                 $this->cpu->triggerIrq();
@@ -383,7 +388,7 @@ class Vic2
             return;
         }
 
-        // Iterate 8 times (so we get 8 VIC cycles on each cycle)
+        // Iterate a few times. This basically decides how much PHP time the VIC gets compared to the CPU.
         for ($i=0; $i!=4; $i++) {
 
             // X / Y coordinates are starting from the top left HBLANK (404x312)
@@ -397,10 +402,11 @@ class Vic2
                 $x -= 2;
                 $y -= 7;
 
-                if (($x >= 46 && $x < 366 && $y > 43 && $y < 243) && $this->screen_enabled) {
+                // Check if the coordinate is a screen or border pixel (and screen is enabled)
+                if ($this->screen_enabled && $x >= 46 && $x < 366 && $y > 43 && $y < 243) {
 
                     // Set current raster line
-                    $this->raster_line = $y - 43;
+                    $this->raster_line = $y;
 
                     // Find the exact pixel color for the given position (based on screenmode, sprites, textdata etc)
                     $p = $this->findPixelToRender($x - 46, $y - 43);
@@ -432,14 +438,20 @@ class Vic2
             }
 
             // Reset raster beam when we reached end of screen
-            if ($this->raster_beam >= (404 * 312)) {
+            if ($this->raster_beam >= 126048) {
+                $t2 = microtime(true);
+                print "Push on ".($t2-$this->t1)." sec         \n";
+                $this->t1 = microtime(true);
                 $this->io->writeMonitorBuffer($this->buffer);
 
                 // Go back to left top corner
                 $this->raster_beam = 0;
 
-                // Should this also be reset here?
+                // Reset raster line to 0
                 $this->raster_line = 0;
+
+                // Clear any caches.
+                $this->cache = null;
             }
         }
 
@@ -571,21 +583,18 @@ class Vic2
     }
 
     /**
-     * Reads a single bitmap line (8 bits) from a given petscii code. By reading
-     * 8 lines (0-7), you retrieve a complete 8x8 bitmap of a single character.
+     * Reads a complete bitmap line (8 bytes) from a given petscii code.
      *
      * @param int $petscii_code
      * @param int $line Line number to read (between 0 and 7)
-     * @return int
+     * @return array
      */
-    protected function readCharBitmapLine($petscii_code, $line) {
-        // Find the location of the start of the character in the character memory
-        $location = $this->charmem_offset + ($petscii_code * 8) + ($line % 8);
+    protected function readCharBitmap($petscii_code) {
+        $location = $this->charmem_offset + ($petscii_code * 8);
 
         // This is tricky: 0x1000-0x1FFF and 0x9000-0x9FFF are actually hardwired by
         // the VIC to read from (Character) ROM instead of RAM
 
-//        printf("Location: %04X\n", $location);
         $readFromRom = false;
         if ($location >= 0x1000 and $location <= 0x1FFF) {
             $readFromRom = true;
@@ -596,12 +605,18 @@ class Vic2
             $location -= 0x9000;
         }
 
+        $bitmap_line = array();
+
         if ($readFromRom) {
             // ROM starts at 0xD000 (actually read from $this->memory_offset)
-            $bitmap_line = $this->memory->read8rom($this->memory_offset + $location);
+            for ($i=0; $i!=8; $i++) {
+                $bitmap_line[$i] = $this->memory->read8rom($this->memory_offset + $location + $i);
+            }
         } else {
             // Everything else we can simply retrieve directly from RAM
-            $bitmap_line = $this->memory->read8ram($location);
+            for ($i=0; $i!=8; $i++) {
+                $bitmap_line[$i] = $this->memory->read8ram($location + $i);
+            }
         }
 
         return $bitmap_line;
@@ -642,9 +657,6 @@ class Vic2
      * @return array|mixed
      */
     protected function handleSprite($sprite_idx, $x, $y, $color) {
-        // Fetch location of the sprite
-        $location = $this->getSpriteShapeOffset($sprite_idx);
-
         $x_coord = $this->sprite_x[$sprite_idx];
         $y_coord = $this->sprite_y[$sprite_idx];
 
@@ -679,7 +691,19 @@ class Vic2
             $byte_offset = ($offset >> 3);
             $bit_offset = 7 - ($offset % 8);
 
-            $value = $this->memory->read8($location + $byte_offset);
+            // Fetch location of the sprite
+            if (! isset($this->cache["sprite.location.$sprite_idx"])) {
+                $this->cache["sprite.location.$sprite_idx"] = $this->getSpriteShapeOffset($sprite_idx);
+            }
+            $location = $this->cache["sprite.location.$sprite_idx"];
+
+            $tmp = $location + $byte_offset;
+            if (! isset($this->cache["sprite.location.value.$tmp"])) {
+                $value = $this->memory->read8($location + $byte_offset);
+                $this->cache["sprite.location.value.$tmp"] = $value;
+            }
+            $value = $this->cache["sprite.location.value.$tmp"];
+
 
             if ($this->sprite_multicolor[$sprite_idx]) {
                 // Multicolor sprite
@@ -720,28 +744,34 @@ class Vic2
      * @return int
      */
     protected function standardCharacterMode($x, $y) {
-        $color = 0;
-
         // Find the actual char for pixel $x, $y
-        $char_index = floor($y / 8) * 40 + floor($x / 8);
+        $char_index = ($y >> 3) * 40 + ($x >> 3);
 
         // Read the given character from the screen memory
-        $char = $this->memory->read8($this->screenmem_offset + $char_index);
+        if (! isset($this->cache["screen.+$char_index"])) {
+            $this->cache["screen.+$char_index"] = $this->memory->read8($this->screenmem_offset + $char_index);
+        }
+        $char = $this->cache["screen.+$char_index"];
+
 
         // Find the start of the matching bitmap inside the character ROM
-        $char_bitmap_line = $this->readCharBitmapLine($char, ($y % 8));
+        if (! isset($this->cache["charbitmap.$char"])) {
+            $this->cache["charbitmap.$char"] = $this->readCharBitmap($char);
+        }
 
-        $pixel = Utils::bit_get($char_bitmap_line, 7 - ($x % 8));
+        $line_idx = ($y & 0x07);
+        $char_bitmap_line = $this->cache["charbitmap.$char"][$line_idx];
+        $pixel = Utils::bit_get($char_bitmap_line, 7 - ($x & 0x07));
 
-        switch ($pixel) {
-            case 0:
-                // Pixel turned off. Use background color
-                $color = $this->background_color[0];
-                break;
-            case 1:
-                // Read from color RAM
-                $color = $this->readFromColorRam($char_index);
-                break;
+        if ($pixel == 0) {
+            // Pixel turned off. Use background color
+            $color = $this->background_color[0];
+        } else {
+            // Read from color RAM
+            if (! isset($this->cache["colorram.$char_index"])) {
+                $this->cache["colorram.$char_index"] = $this->readFromColorRam($char_index);
+            }
+            $color = $this->cache["colorram.$char_index"];
         }
 
         return ($color & 0x0F);
@@ -755,7 +785,7 @@ class Vic2
      */
     protected function multiColorCharacterMode($x, $y) {
         // Find the actual char for pixel $x, $y
-        $char_index = floor($y / 8) * 40 + floor($x / 8);
+        $char_index = ($y >>3) * 40 + ($x >>  3);
 
         // If bit 3 of the color of the given character to plot is 0, plot it as
         // a standard character. This way we can actually "mix" multicolor and

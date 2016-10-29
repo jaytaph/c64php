@@ -41,8 +41,11 @@ class Memory {
     /* Complete memory map for ROM, note that not all the memory is mapped in this ROM */
     protected $rom = null;
 
-    /* Current bank layout (copied from the preset_banks) */
-    protected $current_bank_layout = array();
+    /* The current "raw" value of the banks, as set by writing to location 0x0001 */
+    protected $current_bank_value;
+
+    /* Current bank mode per page (not per "zone") */
+    protected $current_page_layout = array();
 
     // Actual locations of the given banks (they differ in size)
     protected $bank_zones = array(
@@ -113,19 +116,33 @@ class Memory {
      * @param $value
      */
     protected function setupMemoryBankConfiguration($value) {
-        $old_bank = $this->current_bank_layout;
+        if ($value == $this->current_bank_value) {
+            return;
+        }
 
         // It's a bit hard to program which banks are which modes for which value. We use a lookup table instead.
         // Note that we only use the CHAREN, HIRAM, LORAM. But we should also check GAME and EXROM (if available).
         // This gives a total of 32 different bank modes. We use only the first 7 and assume GAME and EXROM to be 0.
-        $this->current_bank_layout = $this->preset_bank_layout[($value & 0x07)];
+
+        // Hold the new zone layout
+        $new_bank_layout = $this->preset_bank_layout[($value & 0x07)];
+
+        // Set the 255 pages based on the memory bank configuration
+        $current_zone = 0;
+        for ($i=0x00; $i<=0xFF; $i++) {
+            if ($i * 0x100 > $this->bank_zones[$current_zone][1]) {
+                // Switch to next zone when the location above the "end-address" of the current zone
+                $current_zone++;
+            }
+            $this->current_page_layout[$i] = $new_bank_layout[$current_zone];
+        }
 
         // Write bank value directly to RAM
         $this->write8(0x0001, $value, self::WRITE_DIRECT_RAM);
 
-        if ($this->current_bank_layout != $old_bank) {
-            $this->logger->debug(sprintf("Changing bank mode to %02X\n", ($value & 0x07)));
-        }
+        $this->logger->debug(sprintf("Changing bank mode to %02X\n", ($value & 0x07)));
+
+        $this->current_bank_value = $value;
     }
 
 
@@ -227,21 +244,6 @@ class Memory {
         return $this->rom[$location];
     }
 
-
-    /**
-     * Returns bank zone (0-6) based on address location
-     */
-    protected function getBankZone($location) {
-        foreach ($this->bank_zones as $zone => $bank_zone) {
-            if ($location >= $bank_zone[0] && $location <= $bank_zone[1]) {
-                return $zone;
-            }
-        }
-
-        $this->logger->error("Location not found in a bank zone.");
-        return self::BANKMODE_RAM;
-    }
-
     /**
      * Read a single memory location, based on configuration
      *
@@ -250,7 +252,7 @@ class Memory {
      */
     public function read8($location)
     {
-        $zone = $this->current_bank_layout[$this->getBankZone($location)];
+        $zone = $this->current_page_layout[($location >> 8) & 0xFF];
 
         if ($zone == self::BANKMODE_RAM) {
             return $this->ram[$location];
@@ -319,14 +321,16 @@ class Memory {
         // the correct handler (ie: 0xd000-0xd3ff IO is dealt with by the vic2 for instance)
 
         if ($location == 0x0001) {
+            $ddr = $this->read8ram(0x0000);
+            $value |= $ddr;
+
             // Zero page 0001 location: change bank configuration
             $this->setupMemoryBankConfiguration($value);
             return 0;
         }
 
-        $zone = $this->getBankZone($location);
-
-        if ($this->current_bank_layout[$zone] == self::BANKMODE_IO) {
+        $zone = $this->current_page_layout[($location >> 8) & 0xFF];
+        if ($zone == self::BANKMODE_IO) {
             if ($location >= 0xD000 && $location <= 0xD3FF) {
                 // Write to vic IO
                 return $this->c64->getVic2()->writeIo($location, $value);
